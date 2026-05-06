@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAI Responses streaming: **`parse_openai_response_stream_json`** / **`OpenAiResponseStreamLine`** (feature **`stream-types`**); Anthropic streaming test for **`content_block_start`** lines.
 - Optional **`retry_if_response_status`** on OpenAI/Anthropic **`ClientConfig`** and builders (replaces default retry-status rule when set).
 - Docs: [`docs/resilience.md`](docs/resilience.md), [`docs/http.md`](docs/http.md), [`docs/fuzzing.md`](docs/fuzzing.md); README proxy/timeout/smoke-matrix/zeroize note; Azure doc link for OpenAI-compatible bases.
+- OpenAI **Assistants** workflow (feature **`assistants`**): typed **`Assistant`**, **`AssistantsListParams`**, **`list_typed`** / **`create_typed`** / **`retrieve_typed`** / **`update_typed`**; **`ThreadsClient`**, **`ThreadClient`**, **`ThreadMessagesClient`**, **`ThreadRunsClient`** with typed **`Thread`**, **`ThreadMessage`**, **`ThreadRun`**; **`HttpTransport::get_json_query`** for list pagination; contract fixtures for assistants, threads, messages, runs, and assistant list pages; top-level **`ThreadsClient::update`**, **`update_typed`**, **`delete`** mirroring **`retrieve`**.
 
 ### Changed
 
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Criterion `hot_path`:** Anthropic SSE benchmark is registered whenever feature **`anthropic`** is enabled (including alongside **`openai`** / `full`), not only when OpenAI is off.
 - **`Retry-After` HTTP-date** values in the past (or equal to “now”) are ignored so retries use exponential backoff instead of a **zero** delay.
 - **README:** duplicate compatibility paragraph removed.
 - **`azure` module rustdoc:** link to [`docs/http.md`](docs/http.md) now points at the workspace-root file.

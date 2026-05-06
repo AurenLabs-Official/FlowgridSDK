@@ -67,7 +67,12 @@ mod tests {
     #[test]
     fn sleep_before_retry_uses_exponential_when_no_retry_after_header() {
         let h = HeaderMap::new();
-        let delay = sleep_before_retry(&h, 2, |n| Duration::from_millis(50 * n as u64), Duration::from_secs(2));
+        let delay = sleep_before_retry(
+            &h,
+            2,
+            |n| Duration::from_millis(50 * n as u64),
+            Duration::from_secs(2),
+        );
         assert_eq!(delay, Duration::from_millis(100));
     }
 }

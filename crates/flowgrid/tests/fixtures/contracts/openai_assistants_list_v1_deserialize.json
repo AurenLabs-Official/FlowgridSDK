@@ -1,0 +1,17 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "asst_contract_1",
+      "object": "assistant",
+      "created_at": 1698984975,
+      "name": "Contract Assistant",
+      "model": "gpt-4o-mini",
+      "tools": [],
+      "metadata": {}
+    }
+  ],
+  "first_id": "asst_contract_1",
+  "last_id": "asst_contract_1",
+  "has_more": false
+}

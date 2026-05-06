@@ -25,9 +25,13 @@ pub mod oai {
     #[cfg(feature = "moderations")]
     use crate::internal::resources::ModerationsClient;
     use crate::internal::resources::ResponsesClient;
+    #[cfg(feature = "assistants")]
+    use crate::internal::resources::ThreadsClient;
     #[cfg(feature = "vector_stores")]
     use crate::internal::resources::VectorStoresClient;
-    use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn};
+    use crate::internal::transport::oai::{
+        ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
+    };
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -138,6 +142,12 @@ pub mod oai {
         #[cfg(feature = "assistants")]
         pub fn assistants(&self) -> AssistantsClient<'_> {
             AssistantsClient::new(self)
+        }
+
+        /// Threads API for Assistants workflows (feature `assistants`); paths under `/threads`.
+        #[cfg(feature = "assistants")]
+        pub fn threads(&self) -> ThreadsClient<'_> {
+            ThreadsClient::new(self)
         }
 
         /// Vector stores API (feature `vector_stores`).
@@ -340,7 +350,9 @@ pub mod oai {
 #[cfg(feature = "anthropic")]
 pub mod clu {
     use crate::internal::error::clu::{Error, Result};
-    use crate::internal::transport::clu::{ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn};
+    use crate::internal::transport::clu::{
+        ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
+    };
     use std::sync::Arc;
     use std::time::Duration;
 

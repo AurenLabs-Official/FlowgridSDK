@@ -16,9 +16,7 @@ macro_rules! contract_fixture {
 
 #[cfg(feature = "openai")]
 mod openai {
-    use flowgrid::{
-        ChatCompletion, Completion, CreateEmbeddingResponse, ResponseObject,
-    };
+    use flowgrid::{ChatCompletion, Completion, CreateEmbeddingResponse, ResponseObject};
 
     #[test]
     fn openai_chat_completion_v1_deserialize() {
@@ -69,6 +67,70 @@ mod openai {
                 let u = v.usage.as_ref().expect("usage");
                 assert_eq!(u.input_tokens, Some(10));
                 assert_eq!(u.output_tokens, Some(5));
+            }
+        );
+    }
+}
+
+#[cfg(all(feature = "openai", feature = "assistants"))]
+mod openai_assistants {
+    use flowgrid::{Assistant, ListPage, Thread, ThreadMessage, ThreadRun};
+
+    #[test]
+    fn openai_assistant_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_assistant_v1_deserialize.json",
+            Assistant,
+            |v| {
+                assert_eq!(v.id, "asst_contract_1");
+                assert_eq!(v.model.as_deref(), Some("gpt-4o-mini"));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_thread_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_thread_v1_deserialize.json",
+            Thread,
+            |v| {
+                assert_eq!(v.id, "thread_contract_1");
+            }
+        );
+    }
+
+    #[test]
+    fn openai_thread_message_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_thread_message_v1_deserialize.json",
+            ThreadMessage,
+            |v| {
+                assert_eq!(v.id, "msg_contract_1");
+                assert_eq!(v.thread_id.as_deref(), Some("thread_contract_1"));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_thread_run_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_thread_run_v1_deserialize.json",
+            ThreadRun,
+            |v| {
+                assert_eq!(v.id, "run_contract_1");
+                assert_eq!(v.status.as_deref(), Some("completed"));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_assistants_list_page_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_assistants_list_v1_deserialize.json",
+            ListPage<Assistant>,
+            |v| {
+                assert_eq!(v.data.len(), 1);
+                assert_eq!(v.data[0].id, "asst_contract_1");
             }
         );
     }

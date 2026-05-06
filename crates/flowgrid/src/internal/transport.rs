@@ -29,8 +29,7 @@ pub mod oai {
 
     /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
     /// response status still triggers a retry (same timing/backoff as built-in retries).
-    pub type RetryIfResponseStatusFn =
-        Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+    pub type RetryIfResponseStatusFn = Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
 
     /// Client configuration (clonable, shared by `OpenAI`).
     #[derive(Clone)]
@@ -274,13 +273,12 @@ pub mod oai {
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
-                        let retry_resp = if let Some(p) =
-                            self.config.retry_if_response_status.as_ref()
-                        {
-                            p(status, resp.headers())
-                        } else {
-                            retry_status(status)
-                        };
+                        let retry_resp =
+                            if let Some(p) = self.config.retry_if_response_status.as_ref() {
+                                p(status, resp.headers())
+                            } else {
+                                retry_status(status)
+                            };
                         if attempt < max && retry_resp {
                             let headers = resp.headers().clone();
                             drop(resp);
@@ -483,6 +481,34 @@ pub mod oai {
         ) -> Result<(T, ResponseMeta)> {
             self.request_json::<serde_json::Value, T>(Method::GET, path, None, exec)
                 .await
+        }
+
+        /// GET JSON with extra query pairs (appended after [`ClientConfig::default_query`](ClientConfig::default_query)).
+        pub async fn get_json_query<T: serde::de::DeserializeOwned>(
+            &self,
+            path: &str,
+            query: &[(String, String)],
+        ) -> Result<(T, ResponseMeta)> {
+            let mut u = self.url(path)?;
+            if !query.is_empty() {
+                let mut pairs = u.query_pairs_mut();
+                for (k, v) in query {
+                    pairs.append_pair(k.as_str(), v.as_str());
+                }
+            }
+            let rb = self.apply_default_headers(self.inner.get(u.as_str()));
+            let resp = self
+                .send_traced(rb, Method::GET, path, &ExecuteOptions::default())
+                .await?;
+            let meta = response_meta(&resp);
+            let status = resp.status();
+            let headers = meta.headers.clone();
+            let text = resp.text().await?;
+            if !status.is_success() {
+                return Err(Self::api_error_from_text(status, &text, headers).into());
+            }
+            let v: T = serde_json::from_str(&text)?;
+            Ok((v, meta))
         }
 
         /// GET raw bytes (e.g. file downloads, audio).
@@ -692,8 +718,7 @@ pub mod clu {
 
     /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
     /// response status still triggers a retry.
-    pub type RetryIfResponseStatusFn =
-        Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+    pub type RetryIfResponseStatusFn = Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
 
     /// Client configuration.
     #[derive(Clone)]
@@ -899,13 +924,12 @@ pub mod clu {
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
-                        let retry_resp = if let Some(p) =
-                            self.config.retry_if_response_status.as_ref()
-                        {
-                            p(status, resp.headers())
-                        } else {
-                            retry_status(status)
-                        };
+                        let retry_resp =
+                            if let Some(p) = self.config.retry_if_response_status.as_ref() {
+                                p(status, resp.headers())
+                            } else {
+                                retry_status(status)
+                            };
                         if attempt < max && retry_resp {
                             let headers = resp.headers().clone();
                             drop(resp);

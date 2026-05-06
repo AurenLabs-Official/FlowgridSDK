@@ -1,0 +1,16 @@
+{
+  "id": "msg_contract_1",
+  "object": "thread.message",
+  "created_at": 1699016383,
+  "thread_id": "thread_contract_1",
+  "role": "user",
+  "content": [
+    {
+      "type": "text",
+      "text": {
+        "value": "Hello from contract fixture",
+        "annotations": []
+      }
+    }
+  ]
+}

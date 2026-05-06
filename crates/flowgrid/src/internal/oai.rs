@@ -51,6 +51,12 @@ pub use crate::internal::resources::{
     ResponseDeleted, ResponseObject, ResponseObjectUsage, ResponsesClient,
 };
 
+#[cfg(all(feature = "openai", feature = "assistants"))]
+pub use crate::internal::resources::{
+    Assistant, AssistantsClient, AssistantsListParams, Thread, ThreadClient, ThreadMessage,
+    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunsClient, ThreadsClient,
+};
+
 #[cfg(feature = "azure")]
 pub use azure::{AzureClientBuilder, AzureOpenAI};
 

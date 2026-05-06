@@ -258,7 +258,7 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 | OpenAI embeddings / legacy completions / Responses (non-stream) | Contract fixtures + typed `usage` fields |
 | Anthropic Messages (non-stream) | Contract fixture + typed API |
 | Anthropic `beta/models` (typed list) | Contract fixture + `list_typed` / `retrieve_typed` when `beta` enabled |
-| OpenAI-compatible **`OPENAI_BASE_URL`** | Best-effort; see [`docs/http.md`](docs/http.md) |
+| OpenAI Assistants / threads / runs (feature `assistants`) | Contract fixtures + typed resources; `OpenAI::assistants()` / `OpenAI::threads()` |
 | Other submodules | Feature-gated compile + unit/integration coverage (varies) |
 
 ## Governance & contributing

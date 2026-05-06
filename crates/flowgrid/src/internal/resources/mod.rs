@@ -17,6 +17,8 @@ mod responses;
 #[cfg(all(feature = "openai", feature = "admin"))]
 mod admin;
 #[cfg(all(feature = "openai", feature = "assistants"))]
+mod assistant_threads;
+#[cfg(all(feature = "openai", feature = "assistants"))]
 mod assistants;
 #[cfg(all(feature = "openai", feature = "audio"))]
 mod audio;
@@ -49,7 +51,12 @@ pub mod models;
 #[cfg(all(feature = "openai", feature = "admin"))]
 pub use admin::AdminClient;
 #[cfg(all(feature = "openai", feature = "assistants"))]
-pub use assistants::AssistantsClient;
+pub use assistant_threads::{
+    Thread, ThreadClient, ThreadMessage, ThreadMessagesClient, ThreadMessagesListParams, ThreadRun,
+    ThreadRunsClient, ThreadsClient,
+};
+#[cfg(all(feature = "openai", feature = "assistants"))]
+pub use assistants::{Assistant, AssistantsClient, AssistantsListParams};
 #[cfg(all(feature = "openai", feature = "audio"))]
 pub use audio::AudioClient;
 #[cfg(all(feature = "openai", feature = "batches"))]

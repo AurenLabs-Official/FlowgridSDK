@@ -136,6 +136,12 @@ pub use internal::oai::{
     ResponseDeleted, ResponseObject, ResponseObjectUsage, ResponsesClient,
 };
 
+#[cfg(all(feature = "openai", feature = "assistants"))]
+pub use internal::oai::{
+    Assistant, AssistantsClient, AssistantsListParams, Thread, ThreadClient, ThreadMessage,
+    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunsClient, ThreadsClient,
+};
+
 #[cfg(all(feature = "openai", feature = "azure"))]
 pub use internal::oai::{AzureClientBuilder, AzureOpenAI};
 

@@ -82,6 +82,9 @@ mod tests {
         let raw = r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"msg_1"}}"#;
         let v = parse_openai_response_stream_json(raw).unwrap().unwrap();
         assert_eq!(v.line_type, "response.output_item.added");
-        assert_eq!(v.extra.get("output_index").and_then(|x| x.as_u64()), Some(0));
+        assert_eq!(
+            v.extra.get("output_index").and_then(|x| x.as_u64()),
+            Some(0)
+        );
     }
 }

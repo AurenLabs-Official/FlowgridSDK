@@ -1,0 +1,13 @@
+{
+  "id": "asst_contract_1",
+  "object": "assistant",
+  "created_at": 1698984975,
+  "name": "Contract Assistant",
+  "description": null,
+  "model": "gpt-4o-mini",
+  "instructions": "You are a fixture assistant.",
+  "tools": [],
+  "metadata": {},
+  "tool_resources": {},
+  "temperature": 1.0
+}

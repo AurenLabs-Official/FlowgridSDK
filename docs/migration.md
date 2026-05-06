@@ -8,6 +8,7 @@ This guide sketches a move from **official first-party SDKs** or **hand-written 
 2. **Errors** are structured [`OpenAiApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.OpenAiApiError.html) / [`AnthropicApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.AnthropicApiError.html) with `status`, `body_snippet`, `retry_after`, and `request_id` when headers expose it—lean on these instead of ad-hoc string matching.
 3. **Retries** are centralized in the HTTP transport (see README “Retries”); tune `max_retries` and `retry_after_max` instead of per-callsite retry loops where appropriate.
 4. **Streaming** uses SSE decoders with [`SseStream::next_event`](https://docs.rs/flowgrid/latest/flowgrid/struct.SseStream.html) / [`into_unpin_event_stream`](https://docs.rs/flowgrid/latest/flowgrid/struct.SseStream.html#method.into_unpin_event_stream); treat non-JSON `data:` payloads defensively the same way you would in other SDKs.
+5. **OpenAI Assistants:** enable Cargo feature **`assistants`** for **`OpenAI::assistants()`** (CRUD + typed helpers) and **`OpenAI::threads()`** (threads, per-thread messages and runs, including cancel / submit tool outputs). Offline contract tests cover core JSON shapes; new provider fields land in **`extra`** maps on the typed models.
 
 ## From raw `reqwest`
 

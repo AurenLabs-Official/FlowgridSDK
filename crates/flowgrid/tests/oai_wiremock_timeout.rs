@@ -1,10 +1,10 @@
 #![cfg(feature = "openai")]
 
-use flowgrid::{ExecuteOptions, OpenAiClientConfig, OpenAiHttpTransport};
-#[cfg(feature = "anthropic")]
-use flowgrid::OpenAiError;
 #[cfg(not(feature = "anthropic"))]
 use flowgrid::Error as OpenAiError;
+#[cfg(feature = "anthropic")]
+use flowgrid::OpenAiError;
+use flowgrid::{ExecuteOptions, OpenAiClientConfig, OpenAiHttpTransport};
 use std::time::Duration;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

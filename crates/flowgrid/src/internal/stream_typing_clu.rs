@@ -72,7 +72,8 @@ mod tests {
 
     #[test]
     fn parse_content_block_start_as_raw() {
-        let raw = r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
+        let raw =
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
         match parse_anthropic_message_stream_json(raw).unwrap().unwrap() {
             AnthropicStreamLine::Raw(v) => assert_eq!(v["type"], "content_block_start"),
             _ => panic!("expected Raw"),
