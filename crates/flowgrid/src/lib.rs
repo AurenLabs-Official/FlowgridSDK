@@ -6,8 +6,8 @@
 //!
 //! Enable providers with Cargo features `openai` and `anthropic` (both on by default). With **both**
 //! enabled, types that would clash are exported with `OpenAi*` / `Anthropic*` prefixes (for example
-//! [`OpenAiError`] and [`AnthropicError`]). If you build with only one provider, [`Error`] and
-//! [`Result`] refer to that provider.
+//! [`OpenAiError`] and [`AnthropicError`]). If you build with only one provider, the unprefixed
+//! `Error` and `Result` aliases refer to that provider.
 //!
 //! **Streaming:** chat completions, Responses API, and Anthropic messages support SSE via
 //! `create_stream` on the respective clients. Decoders expose `next_event`,

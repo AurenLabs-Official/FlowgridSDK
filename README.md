@@ -148,11 +148,13 @@ cargo test -p flowgrid --features full
 
 `cargo test -p flowgrid --all-features` is **not** supported because it would enable both TLS stacks. CI uses the `full` feature set instead.
 
+On **Windows**, parallel test binaries can occasionally trigger linker error `LNK1104` (“cannot open file …exe”). If that happens, run `cargo test -p flowgrid --features full -j 1` or close programs that lock files under `target/`.
+
 Ignored live tests: set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` as appropriate and run with `--ignored`.
 
 ## Retries, `Retry-After`, and headers
 
-The HTTP transports retry transient failures up to `max_retries` (see module docs on [`HttpTransport`](https://docs.rs/flowgrid/latest/flowgrid/)). Response statuses **408**, **409**, **429**, and **5xx** are retried (Anthropic also treats **529** as retryable). Other **4xx** are surfaced as [`OpenAiApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.OpenAiApiError.html) / [`AnthropicApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.AnthropicApiError.html) without retry. When the server sends **`Retry-After`** (seconds or HTTP-date), the wait honors it but is **capped** by `retry_after_max` on [`OpenAiClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiClientConfig.html) / [`AnthropicClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicClientConfig.html) (default **2 s**, aligned with the exponential backoff ceiling). Parsed values appear on errors as `retry_after` / `body_snippet` / `provider` ([`ProviderKind`](https://docs.rs/flowgrid/latest/flowgrid/enum.ProviderKind.html)).
+The HTTP transports retry transient failures up to `max_retries` (see rustdoc on [`OpenAiHttpTransport`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiHttpTransport.html) / [`AnthropicHttpTransport`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicHttpTransport.html)). Response statuses **408**, **409**, **429**, and **5xx** are retried (Anthropic also treats **529** as retryable). Other **4xx** are surfaced as [`OpenAiApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.OpenAiApiError.html) / [`AnthropicApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.AnthropicApiError.html) without retry. When the server sends **`Retry-After`** (seconds or HTTP-date), the wait honors it but is **capped** by `retry_after_max` on [`OpenAiClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiClientConfig.html) / [`AnthropicClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicClientConfig.html) (default **2 s**, aligned with the exponential backoff ceiling). Parsed values appear on errors as `retry_after` / `body_snippet` / `provider` ([`ProviderKind`](https://docs.rs/flowgrid/latest/flowgrid/enum.ProviderKind.html)).
 
 Successful [`OpenAiResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiResponseMeta.html) / [`AnthropicResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicResponseMeta.html) optionally echo `retry_after` and common rate-limit headers when the API sends them (`x-ratelimit-*` on OpenAI, `anthropic-ratelimit-*` on Anthropic).
 
@@ -169,5 +171,7 @@ Versioned JSON under [`crates/flowgrid/tests/fixtures/contracts/`](crates/flowgr
 API compatibility for the crate root `pub use` surface is checked in CI with [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks) against a committed rustdoc JSON baseline: [`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json). CI regenerates current rustdoc on **nightly** with `cargo rustdoc -p flowgrid --features full -Z unstable-options -- …` and passes `--current-rustdoc target/doc/flowgrid.json` so the check never enables conflicting TLS features.
 
 When you **release** a version that changes the public API, refresh the baseline from the same nightly invocation (from the repo root, after bumping the crate version if needed), copy `target/doc/flowgrid.json` over `crates/flowgrid/semver/baseline_rustdoc.json`, and commit it together with the release PR.
+
+## License
 
 Licensed under MIT OR Apache-2.0 at your option (see crate `Cargo.toml`).

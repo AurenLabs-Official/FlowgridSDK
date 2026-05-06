@@ -136,9 +136,9 @@ pub mod oai {
                 .map_err(|e| crate::internal::error::oai::Error::Sse(e.to_string()))
         }
 
-        /// Turn this decoder into a [`futures::Stream`] of events (same errors as [`next_event`]).
+        /// Turn this decoder into a [`futures::Stream`] of events (same errors as [`SseStream::next_event`](SseStream::next_event)).
         ///
-        /// The returned stream is **not** [`Unpin`]; use [`into_unpin_event_stream`] with
+        /// The returned stream is **not** [`Unpin`]; use [`SseStream::into_unpin_event_stream`](SseStream::into_unpin_event_stream) with
         /// [`futures::StreamExt::next`].
         pub fn into_event_stream(self) -> impl Stream<Item = Result<SseEvent>> + Send
         where
@@ -153,7 +153,7 @@ pub mod oai {
             })
         }
 
-        /// Same semantics as [`into_event_stream`], but the result is [`Unpin`] for ergonomic use with
+        /// Same semantics as [`SseStream::into_event_stream`](SseStream::into_event_stream), but the result is [`Unpin`] for ergonomic use with
         /// [`futures::StreamExt::next`].
         pub fn into_unpin_event_stream(self) -> OpenAiSseEventStream
         where
@@ -213,7 +213,7 @@ pub mod clu {
 
         /// Semantics match the OpenAI helper of the same name when both providers are enabled.
         ///
-        /// The returned stream is **not** [`Unpin`]; use [`into_unpin_event_stream`] with
+        /// The returned stream is **not** [`Unpin`]; use [`SseStream::into_unpin_event_stream`](SseStream::into_unpin_event_stream) with
         /// [`futures::StreamExt::next`].
         pub fn into_event_stream(self) -> impl Stream<Item = Result<SseEvent>> + Send
         where
