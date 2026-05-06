@@ -2,10 +2,9 @@ use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
 use crate::internal::oai::pagination::ListPage;
 use crate::internal::sse::oai::SseStream;
+use crate::internal::stream_types::BoxedByteStream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-use super::responses::BoxedByteStream;
 
 /// Chat namespace (`client.chat`).
 pub struct ChatClient<'a> {
@@ -53,6 +52,11 @@ impl<'a> ChatCompletionsClient<'a> {
     }
 
     /// Streaming chat completions (SSE).
+    ///
+    /// You must set [`CreateChatCompletionRequest::stream`] to `Some(true)`. The API often ends
+    /// with a `data: [DONE]` event—treat non-JSON payloads accordingly.
+    ///
+    /// For a [`futures::Stream`] over events, use [`SseStream::into_event_stream`](crate::internal::sse::oai::SseStream::into_event_stream).
     pub async fn create_stream(
         &self,
         body: &CreateChatCompletionRequest,
@@ -60,6 +64,12 @@ impl<'a> ChatCompletionsClient<'a> {
         SseStream<BoxedByteStream>,
         crate::internal::transport::oai::ResponseMeta,
     )> {
+        if body.stream != Some(true) {
+            return Err(crate::internal::error::oai::Error::Config(
+                "create_stream requires CreateChatCompletionRequest { stream: Some(true), .. }"
+                    .to_string(),
+            ));
+        }
         let (stream, meta) = self
             .inner
             .transport

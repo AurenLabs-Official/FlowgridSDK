@@ -1,13 +1,9 @@
 use crate::internal::client::clu::{Anthropic, WithResponse};
 use crate::internal::error::clu::Result;
 use crate::internal::sse::clu::SseStream;
-use bytes::Bytes;
-use futures::Stream;
-use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 
-pub type BoxedByteStream =
-    Pin<Box<dyn Stream<Item = std::result::Result<Bytes, std::io::Error>> + Send>>;
+pub use crate::internal::stream_types::BoxedByteStream;
+use serde::{Deserialize, Serialize};
 
 pub struct MessagesClient<'a> {
     inner: &'a Anthropic,
@@ -33,6 +29,10 @@ impl<'a> MessagesClient<'a> {
     }
 
     /// Streaming message (`stream: true`); yields SSE events.
+    ///
+    /// Requires [`CreateMessageRequest::stream`] `== Some(true)`. Use
+    /// [`SseStream::into_event_stream`](crate::internal::sse::clu::SseStream::into_event_stream)
+    /// for a [`futures::Stream`] of [`SseEvent`](crate::internal::sse::clu::SseEvent) values.
     pub async fn create_stream(
         &self,
         body: &CreateMessageRequest,

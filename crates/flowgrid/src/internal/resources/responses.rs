@@ -1,14 +1,9 @@
 use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
 use crate::internal::sse::oai::SseStream;
-use bytes::Bytes;
-use futures::Stream;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
-use std::result::Result as StdResult;
 
-/// Boxed byte stream from the HTTP client.
-pub type BoxedByteStream = Pin<Box<dyn Stream<Item = StdResult<Bytes, std::io::Error>> + Send>>;
+pub use crate::internal::stream_types::BoxedByteStream;
 
 /// Typed Responses API client (`client.responses`).
 pub struct ResponsesClient<'a> {
@@ -36,6 +31,13 @@ impl<'a> ResponsesClient<'a> {
     }
 
     /// `POST /responses` with `stream: true`, returning an SSE decoder.
+    ///
+    /// You must set [`CreateResponseRequest::stream`] to `Some(true)`. OpenAI may send a final
+    /// `data: [DONE]` line and other events—parse [`sse::oai::SseEvent::data`](crate::internal::sse::oai::SseEvent)
+    /// defensively or stop when you see `[DONE]`.
+    ///
+    /// For a [`futures::Stream`] of events, call [`SseStream::into_event_stream`](crate::internal::sse::oai::SseStream::into_event_stream)
+    /// on the returned decoder.
     pub async fn create_stream(
         &self,
         body: &CreateResponseRequest,
@@ -43,6 +45,12 @@ impl<'a> ResponsesClient<'a> {
         SseStream<BoxedByteStream>,
         crate::internal::transport::oai::ResponseMeta,
     )> {
+        if body.stream != Some(true) {
+            return Err(crate::internal::error::oai::Error::Config(
+                "create_stream requires CreateResponseRequest { stream: Some(true), .. }"
+                    .to_string(),
+            ));
+        }
         let (stream, meta) = self
             .inner
             .transport

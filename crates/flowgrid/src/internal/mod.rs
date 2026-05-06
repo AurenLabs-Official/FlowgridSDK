@@ -8,6 +8,7 @@ mod client;
 mod error;
 pub mod resources;
 mod sse;
+mod stream_types;
 mod transport;
 
 #[cfg(feature = "openai")]
