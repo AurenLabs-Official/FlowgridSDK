@@ -169,30 +169,6 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 name = "flowgrid"
 version = "0.1.0"
 dependencies = [
- "flowgrid-anthropic",
- "flowgrid-openai",
-]
-
-[[package]]
-name = "flowgrid-anthropic"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "url",
- "wiremock",
-]
-
-[[package]]
-name = "flowgrid-openai"
-version = "0.1.0"
-dependencies = [
  "bytes",
  "futures",
  "hex",

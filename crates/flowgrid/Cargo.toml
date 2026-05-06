@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT OR Apache-2.0"
-description = "Meta-crate: re-exports flowgrid-openai and flowgrid-anthropic behind feature flags."
+description = "Unified async HTTP clients for OpenAI and Anthropic (feature-gated)."
 repository = "https://github.com/example/flowgrid-sdk"
 
 [lib]
@@ -13,9 +13,71 @@ path = "src/lib.rs"
 
 [features]
 default = ["openai", "anthropic"]
-openai = ["dep:flowgrid-openai"]
-anthropic = ["dep:flowgrid-anthropic"]
+full = [
+    "files",
+    "images",
+    "audio",
+    "moderations",
+    "batches",
+    "fine_tuning",
+    "evals",
+    "assistants",
+    "vector_stores",
+    "containers",
+    "admin",
+    "webhooks",
+    "azure",
+    "realtime",
+    "models",
+    "beta",
+]
+tracing = ["dep:tracing"]
+openai = []
+anthropic = []
+files = []
+images = []
+audio = []
+moderations = []
+batches = []
+fine_tuning = []
+evals = []
+assistants = []
+vector_stores = []
+containers = []
+admin = []
+webhooks = []
+azure = []
+realtime = ["dep:tokio-tungstenite", "dep:http"]
+models = []
+beta = []
 
 [dependencies]
-flowgrid-openai = { path = "../flowgrid-openai", optional = true }
-flowgrid-anthropic = { path = "../flowgrid-anthropic", optional = true }
+bytes = "1"
+futures = "0.3"
+mime = "0.3"
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "multipart",
+    "stream",
+    "rustls-tls",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "time"] }
+tokio-util = { version = "0.7", features = ["io"] }
+url = "2"
+tracing = { version = "0.1", optional = true }
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+http = { version = "1", optional = true }
+tokio-tungstenite = { version = "0.24", optional = true, features = [
+    "rustls-tls-webpki-roots",
+] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
+serde_json = "1"
