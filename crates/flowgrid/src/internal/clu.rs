@@ -26,4 +26,4 @@ pub use crate::internal::resources::MessageBatchesClient;
 pub use crate::internal::resources::models::ModelsClient;
 
 #[cfg(feature = "beta")]
-pub use crate::internal::resources::beta::BetaClient;
+pub use crate::internal::resources::{BetaClient, BetaModel, BetaModelsListResponse};

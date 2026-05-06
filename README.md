@@ -116,9 +116,11 @@ async fn example() -> Result<(), flowgrid::AnthropicError> {
 }
 ```
 
-## TLS
+## TLS, proxies, and timeouts
 
 Defaults use **`tls-rustls`** (`reqwest` + Rustls). For system / corporate certificate stores, disable default features and enable **`tls-native`** instead. **Do not** enable both `tls-rustls` and `tls-native` (the crate will fail to compile). Disabling all default features without one of these TLS features also fails if `openai` or `anthropic` is enabled.
+
+**Proxies:** `reqwest` honors **`HTTP_PROXY`**, **`HTTPS_PROXY`**, and **`NO_PROXY`** when set in the process environment. **Timeout layers** (client default vs [`ExecuteOptions`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) vs streaming `next()` loops) are summarized in [`docs/http.md`](docs/http.md).
 
 ## Examples
 
@@ -197,6 +199,8 @@ The HTTP transports retry transient failures up to `max_retries` (see rustdoc on
 
 Successful [`OpenAiResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiResponseMeta.html) / [`AnthropicResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicResponseMeta.html) optionally echo `retry_after` and common rate-limit headers when the API sends them (`x-ratelimit-*` on OpenAI, `anthropic-ratelimit-*` on Anthropic).
 
+Advanced: **`retry_if_response_status`** on the builders replaces the default “retry this status” rule (see [`docs/resilience.md`](docs/resilience.md)). Circuit breakers / bulkheads stay **out of scope** for the core crate—wrap calls in your app.
+
 ## Per-call timeouts
 
 [`ExecuteOptions`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) overrides the HTTP timeout for a single request (including streaming entrypoints) without building a new client. Chat and Messages expose `create_with_options`, `create_stream_with_options`, and `create_with_response_and_options`. Lower layers also provide `get_json_with_options` / `post_json_with_options` on the transports. For cancellation beyond timeouts, use **`tokio::select!`**, **`tokio::time::timeout`** around **`StreamExt::next`**, or the optional **`cancel`** feature with **[`stream_next_until_cancelled`](https://docs.rs/flowgrid/latest/flowgrid/fn.stream_next_until_cancelled.html)** (see Cookbook).
@@ -217,11 +221,23 @@ cargo bench -p flowgrid --features full
 
 The **`hot_path`** target exercises contract JSON deserialization and a small SSE parse through the public **`SseStream`**. Results are relative to your machine; use them for regressions, not provider latency claims.
 
+**Draining SSE in memory:** [`try_collect_unpin`](https://docs.rs/flowgrid/latest/flowgrid/fn.try_collect_unpin.html) collects an [`Unpin`](https://docs.rs/futures/latest/futures/stream/trait.Stream.html) fallible event stream until completion (or first error). **Memory grows with the stream**—use only for bounded or trusted streams. Typed **`data:`** lines: **`stream-types`** adds chat / Responses / Anthropic parsers (see rustdoc `parse_*_stream_json`).
+
+### Ignored live smokes (manual)
+
+| Test / area | Env / command | Expectation |
+|-------------|----------------|-------------|
+| OpenAI embeddings / Azure / etc. | `OPENAI_API_KEY`, `cargo test -p flowgrid --features full -- --ignored` | Smoke only; may hit real quota. |
+| Anthropic messages | `ANTHROPIC_API_KEY`, same | Same. |
+
+Expand this table as you add `--ignored` integration tests.
+
 ## Security & privacy
 
 - **API keys** are supplied by your app (headers / builders). The SDK does **not** phone home or send SDK-level telemetry.
 - **Errors:** `Debug` / `Display` on error types may include **`body_snippet`**, `request_id`, and header-derived timing fields—treat logs as sensitive when customer data is present. Do **not** log full response bodies in hooks; see [`docs/observability.md`](docs/observability.md).
 - **Trust boundaries:** your binary → `flowgrid` (configured TLS to provider) → vendor API. The crate does **not** persist prompts or completions beyond what you hold in memory in response types.
+- **Secrets in memory:** API keys are held as **`String`** in config; the crate does **not** use **`zeroize`** today. Treat process memory like any other client library; prefer env vars or secret stores in production.
 
 CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your org’s advisory policies in [`deny.toml`](deny.toml).
 
@@ -239,7 +255,10 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 |------|-----------|
 | OpenAI chat completions (non-stream) | Contract fixture + typed API |
 | OpenAI chat completions (SSE) | Example + streaming tests where present |
+| OpenAI embeddings / legacy completions / Responses (non-stream) | Contract fixtures + typed `usage` fields |
 | Anthropic Messages (non-stream) | Contract fixture + typed API |
+| Anthropic `beta/models` (typed list) | Contract fixture + `list_typed` / `retrieve_typed` when `beta` enabled |
+| OpenAI-compatible **`OPENAI_BASE_URL`** | Best-effort; see [`docs/http.md`](docs/http.md) |
 | Other submodules | Feature-gated compile + unit/integration coverage (varies) |
 
 ## Governance & contributing
@@ -247,6 +266,9 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 - **[`CHANGELOG.md`](CHANGELOG.md)** — release notes (Keep a Changelog).
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
 - **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
+- **[`docs/resilience.md`](docs/resilience.md)** — retries, custom status predicate, rate limits vs circuit breakers.
+- **[`docs/http.md`](docs/http.md)** — TLS, proxy env, timeouts, OpenAI-compatible bases.
+- **[`docs/fuzzing.md`](docs/fuzzing.md)** — optional `cargo-fuzz` notes for SSE parsing.
 
 **Releases / semver:** API compatibility for the crate root `pub use` surface is checked in CI with [**cargo-semver-checks**](https://github.com/obi1kenobi/cargo-semver-checks) against [`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json). CI regenerates rustdoc on **nightly** (`cargo rustdoc -p flowgrid --features full -Z unstable-options -- …`) and passes `--current-rustdoc target/doc/flowgrid.json` so conflicting TLS features are never enabled together. When you ship an intentional API change, refresh that baseline in the **same** PR as the version bump (see CONTRIBUTING).
 

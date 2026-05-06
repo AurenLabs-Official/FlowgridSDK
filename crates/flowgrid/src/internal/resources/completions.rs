@@ -1,5 +1,6 @@
 use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
+use crate::internal::resources::usage::CompletionUsage;
 use serde::{Deserialize, Serialize};
 
 /// Legacy completions (`client.completions`).
@@ -53,7 +54,7 @@ pub struct Completion {
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
-    pub usage: Option<serde_json::Value>,
+    pub usage: Option<CompletionUsage>,
 }
 
 /// Legacy completion choice.

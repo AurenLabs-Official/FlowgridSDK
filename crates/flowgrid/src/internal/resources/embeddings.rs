@@ -1,5 +1,6 @@
 use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
+use crate::internal::resources::usage::EmbeddingUsage;
 use serde::{Deserialize, Serialize};
 
 /// Embeddings API (`client.embeddings`).
@@ -50,7 +51,7 @@ pub struct CreateEmbeddingResponse {
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
-    pub usage: Option<serde_json::Value>,
+    pub usage: Option<EmbeddingUsage>,
 }
 
 /// Single embedding vector payload.

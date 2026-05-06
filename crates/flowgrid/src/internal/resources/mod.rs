@@ -1,4 +1,9 @@
 #[cfg(feature = "openai")]
+mod usage;
+
+#[cfg(feature = "openai")]
+pub use usage::{CompletionUsage, EmbeddingUsage, ResponseObjectUsage};
+#[cfg(feature = "openai")]
 mod chat;
 #[cfg(feature = "openai")]
 mod completions;
@@ -34,6 +39,8 @@ mod vector_stores;
 
 #[cfg(all(feature = "anthropic", feature = "beta"))]
 pub mod beta;
+#[cfg(all(feature = "anthropic", feature = "beta"))]
+pub use beta::{BetaClient, BetaModel, BetaModelsListResponse};
 #[cfg(feature = "anthropic")]
 pub mod messages;
 #[cfg(all(feature = "anthropic", feature = "models"))]

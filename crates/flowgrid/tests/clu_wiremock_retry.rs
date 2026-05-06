@@ -50,6 +50,7 @@ async fn retries_on_429_then_succeeds_messages() {
         user_agent_suffix: None,
         request_hook: None,
         retry_after_max: std::time::Duration::from_millis(2000),
+        retry_if_response_status: None,
     };
     let t = AnthropicHttpTransport::new(config).unwrap();
     let body =

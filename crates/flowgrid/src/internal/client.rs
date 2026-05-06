@@ -27,7 +27,7 @@ pub mod oai {
     use crate::internal::resources::ResponsesClient;
     #[cfg(feature = "vector_stores")]
     use crate::internal::resources::VectorStoresClient;
-    use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta};
+    use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -182,6 +182,7 @@ pub mod oai {
         >,
         #[cfg(feature = "webhooks")]
         webhook_secret: Option<String>,
+        retry_if_response_status: Option<RetryIfResponseStatusFn>,
     }
 
     impl std::fmt::Debug for ClientBuilder {
@@ -202,6 +203,10 @@ pub mod oai {
             d.field(
                 "webhook_secret",
                 &self.webhook_secret.as_ref().map(|_| "***"),
+            );
+            d.field(
+                "retry_if_response_status",
+                &self.retry_if_response_status.as_ref().map(|_| "..."),
             );
             d.finish()
         }
@@ -227,6 +232,7 @@ pub mod oai {
                 request_hook: None,
                 #[cfg(feature = "webhooks")]
                 webhook_secret: c.webhook_secret,
+                retry_if_response_status: c.retry_if_response_status,
             })
         }
 
@@ -290,6 +296,16 @@ pub mod oai {
             self
         }
 
+        /// Custom rule: return `true` to retry this **HTTP response status** (same backoff as
+        /// built-ins). When unset, the default retryable-status set is used.
+        pub fn retry_if_response_status<F>(mut self, f: F) -> Self
+        where
+            F: Fn(reqwest::StatusCode, &reqwest::header::HeaderMap) -> bool + Send + Sync + 'static,
+        {
+            self.retry_if_response_status = Some(Arc::new(f));
+            self
+        }
+
         /// Build configured [`OpenAI`].
         pub fn build(self) -> Result<OpenAI> {
             let api_key = self
@@ -313,6 +329,7 @@ pub mod oai {
                 #[cfg(feature = "webhooks")]
                 webhook_secret: self.webhook_secret,
                 retry_after_max: Duration::from_millis(2000),
+                retry_if_response_status: self.retry_if_response_status,
             };
             let transport = HttpTransport::new(config)?;
             Ok(OpenAI { transport })
@@ -323,7 +340,7 @@ pub mod oai {
 #[cfg(feature = "anthropic")]
 pub mod clu {
     use crate::internal::error::clu::{Error, Result};
-    use crate::internal::transport::clu::{ClientConfig, HttpTransport, ResponseMeta};
+    use crate::internal::transport::clu::{ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -388,6 +405,7 @@ pub mod clu {
         user_agent_suffix: Option<String>,
         request_hook:
             Option<Arc<dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync>>,
+        retry_if_response_status: Option<RetryIfResponseStatusFn>,
     }
 
     impl std::fmt::Debug for AnthropicBuilder {
@@ -403,6 +421,10 @@ pub mod clu {
                 .field(
                     "request_pre_send_hook",
                     &self.request_hook.as_ref().map(|_| "..."),
+                )
+                .field(
+                    "retry_if_response_status",
+                    &self.retry_if_response_status.as_ref().map(|_| "..."),
                 )
                 .finish()
         }
@@ -425,6 +447,7 @@ pub mod clu {
                 max_retries: Some(c.max_retries),
                 user_agent_suffix: c.user_agent_suffix,
                 request_hook: None,
+                retry_if_response_status: c.retry_if_response_status,
             })
         }
 
@@ -473,6 +496,15 @@ pub mod clu {
             self
         }
 
+        /// Custom HTTP status retry rule (same semantics as OpenAI `ClientBuilder::retry_if_response_status`).
+        pub fn retry_if_response_status<F>(mut self, f: F) -> Self
+        where
+            F: Fn(reqwest::StatusCode, &reqwest::header::HeaderMap) -> bool + Send + Sync + 'static,
+        {
+            self.retry_if_response_status = Some(Arc::new(f));
+            self
+        }
+
         pub fn build(self) -> Result<Anthropic> {
             let api_key = self
                 .api_key
@@ -492,6 +524,7 @@ pub mod clu {
                 user_agent_suffix: self.user_agent_suffix,
                 request_hook: self.request_hook,
                 retry_after_max: Duration::from_millis(2000),
+                retry_if_response_status: self.retry_if_response_status,
             };
             Ok(Anthropic {
                 transport: HttpTransport::new(config)?,

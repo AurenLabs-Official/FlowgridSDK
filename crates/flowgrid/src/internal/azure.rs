@@ -4,6 +4,9 @@
 //!
 //! Azure uses the `api-key` header and typically requires an `api-version` query parameter on
 //! every request. This module configures [`crate::internal::oai::OpenAI`] accordingly.
+//!
+//! For **non-Azure** OpenAI-compatible HTTP servers, use [`crate::internal::client::oai::ClientBuilder`]
+//! with a custom `base_url` instead (see [`docs/http.md`](../../../docs/http.md) at the workspace root).
 
 use crate::internal::client::oai::OpenAI;
 use crate::internal::error::oai::{Error, Result};
@@ -112,6 +115,7 @@ impl AzureClientBuilder {
             #[cfg(feature = "webhooks")]
             webhook_secret: None,
             retry_after_max: Duration::from_millis(2000),
+            retry_if_response_status: None,
         };
         let transport = HttpTransport::new(config)?;
         Ok(OpenAI { transport })

@@ -14,6 +14,6 @@ When you change the public root API:
 
 User-visible behavior or API updates should have an entry in **`CHANGELOG.md`** under `[Unreleased]` (or the release section you are preparing).
 
-## Dependencies
+## Supply chain
 
-Major dependency upgrades may require checking **`deny.toml`** / licenses and updating **`CHANGELOG.md`**. Dependabot-style bumps should keep CI green (fmt, clippy, tests, semver, supply-chain jobs).
+CI runs **`cargo deny check`** (see root [`deny.toml`](deny.toml)). **`cargo deny`** may warn about duplicate **`windows-sys`** versions pulled by **`criterion`** (dev) vs **`tokio`**/`mio`; this is expected on Windows-heavy graphs and is tracked as **warn**-level in `deny.toml` bans, not a hard failure.

@@ -33,6 +33,7 @@ async fn per_call_timeout_fires_before_slow_response() {
         user_agent_suffix: None,
         request_hook: None,
         retry_after_max: Duration::from_millis(2000),
+        retry_if_response_status: None,
         #[cfg(feature = "webhooks")]
         webhook_secret: None,
     };

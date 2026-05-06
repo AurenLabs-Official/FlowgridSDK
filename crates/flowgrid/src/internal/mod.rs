@@ -10,6 +10,7 @@ pub mod execute_options;
 pub mod resources;
 mod retry_policy;
 mod sse;
+mod stream_collect;
 mod stream_types;
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 mod stream_typing;
@@ -22,6 +23,9 @@ mod otel_http;
 
 #[cfg(feature = "cancel")]
 pub mod stream_cancel;
+
+#[cfg(any(feature = "openai", feature = "anthropic"))]
+pub use stream_collect::try_collect_unpin;
 
 #[cfg(feature = "openai")]
 mod pagination;

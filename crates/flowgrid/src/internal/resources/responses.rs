@@ -1,5 +1,6 @@
 use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
+use crate::internal::resources::usage::ResponseObjectUsage;
 use crate::internal::sse::oai::SseStream;
 use serde::{Deserialize, Serialize};
 
@@ -107,7 +108,7 @@ pub struct ResponseObject {
     pub model: Option<String>,
     /// Usage information when present.
     #[serde(default)]
-    pub usage: Option<serde_json::Value>,
+    pub usage: Option<ResponseObjectUsage>,
     #[serde(flatten)]
     /// Any additional keys returned by the API.
     pub extra: serde_json::Map<String, serde_json::Value>,

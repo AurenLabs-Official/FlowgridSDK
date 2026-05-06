@@ -12,13 +12,17 @@
 //! **Streaming:** chat completions, Responses API, and Anthropic messages support SSE via
 //! `create_stream` on the respective clients. Decoders expose `next_event`,
 //! `into_unpin_event_stream` (for `StreamExt::next` without `pin_mut`), and `into_event_stream`.
-//! OpenAI may send a final `data: [DONE]` line; parse event payloads defensively.
+//! Use [`try_collect_unpin`] only for bounded streams. OpenAI may send a final `data: [DONE]` line;
+//! parse event payloads defensively.
 
 #![allow(missing_docs)]
 #![allow(clippy::result_large_err)]
 
 pub use internal::error::ProviderKind;
 pub use internal::execute_options::ExecuteOptions;
+
+#[cfg(any(feature = "openai", feature = "anthropic"))]
+pub use internal::try_collect_unpin;
 
 #[cfg(feature = "cancel")]
 pub use internal::stream_cancel::stream_next_until_cancelled;
@@ -109,7 +113,8 @@ pub use internal::clu::{AnthropicSseEventStream, SseEvent, SseStream};
 
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 pub use internal::oai::{
-    parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,
+    parse_openai_chat_stream_json, parse_openai_response_stream_json, OpenAiChatChunkChoice,
+    OpenAiChatCompletionChunk, OpenAiResponseStreamLine,
 };
 
 #[cfg(all(feature = "anthropic", feature = "stream-types"))]
@@ -125,10 +130,10 @@ pub use internal::oai::{ErrorDetail, ErrorObject, ListPage};
 pub use internal::oai::{
     ChatClient, ChatCompletion, ChatCompletionChoice, ChatCompletionDeleted,
     ChatCompletionListParams, ChatCompletionMessage, ChatCompletionMessagesListParams,
-    ChatCompletionsClient, Completion, CompletionChoice, CompletionsClient,
+    ChatCompletionsClient, Completion, CompletionChoice, CompletionUsage, CompletionsClient,
     CreateChatCompletionRequest, CreateCompletionRequest, CreateEmbeddingRequest,
-    CreateEmbeddingResponse, CreateResponseRequest, Embedding, EmbeddingsClient, ResponseDeleted,
-    ResponseObject, ResponsesClient,
+    CreateEmbeddingResponse, CreateResponseRequest, Embedding, EmbeddingUsage, EmbeddingsClient,
+    ResponseDeleted, ResponseObject, ResponseObjectUsage, ResponsesClient,
 };
 
 #[cfg(all(feature = "openai", feature = "azure"))]
@@ -160,4 +165,4 @@ pub use internal::clu::MessageBatchesClient;
 pub use internal::clu::ModelsClient;
 
 #[cfg(all(feature = "anthropic", feature = "beta"))]
-pub use internal::clu::BetaClient;
+pub use internal::clu::{BetaClient, BetaModel, BetaModelsListResponse};

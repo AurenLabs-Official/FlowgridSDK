@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional **`cancel`** Cargo feature and `stream_next_until_cancelled` helper for cooperative SSE/stream shutdown.
 - Contract fixture naming convention, `tools/import_contract` scripts, and Criterion `hot_path` benchmarks.
 - Developer `justfile`, `docs/migration.md`, supply-chain CI (`cargo deny` / `cargo audit`), and governance docs (`CONTRIBUTING.md`, this file).
+- Typed **`EmbeddingUsage`**, **`CompletionUsage`**, **`ResponseObjectUsage`** on OpenAI embedding/completion/response types; **`BetaModel`**, **`BetaModelsListResponse`**, **`list_typed`** / **`retrieve_typed`** on beta models client.
+- Additional contract fixtures and tests for embeddings, completions, responses, beta models.
+- **`try_collect_unpin`** helper for draining fallible **`Unpin`** SSE streams (memory grows with length).
+- OpenAI Responses streaming: **`parse_openai_response_stream_json`** / **`OpenAiResponseStreamLine`** (feature **`stream-types`**); Anthropic streaming test for **`content_block_start`** lines.
+- Optional **`retry_if_response_status`** on OpenAI/Anthropic **`ClientConfig`** and builders (replaces default retry-status rule when set).
+- Docs: [`docs/resilience.md`](docs/resilience.md), [`docs/http.md`](docs/http.md), [`docs/fuzzing.md`](docs/fuzzing.md); README proxy/timeout/smoke-matrix/zeroize note; Azure doc link for OpenAI-compatible bases.
+
+### Changed
+
+- **`CreateEmbeddingResponse.usage`**, **`Completion.usage`**, and **`ResponseObject.usage`** are now structured types (with **`extra`** maps) instead of raw **`serde_json::Value`**.
+
+### Fixed
+
+- **`Retry-After` HTTP-date** values in the past (or equal to “now”) are ignored so retries use exponential backoff instead of a **zero** delay.
+- **README:** duplicate compatibility paragraph removed.
+- **`azure` module rustdoc:** link to [`docs/http.md`](docs/http.md) now points at the workspace-root file.
 
 ### Documentation
 

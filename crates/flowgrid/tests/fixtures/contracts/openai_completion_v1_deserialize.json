@@ -1,0 +1,17 @@
+{
+  "id": "cmpl_contract_1",
+  "object": "text_completion",
+  "model": "gpt-test-legacy",
+  "choices": [
+    {
+      "text": "done.",
+      "index": 0,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1,
+    "completion_tokens": 2,
+    "total_tokens": 3
+  }
+}

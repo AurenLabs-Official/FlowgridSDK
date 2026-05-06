@@ -1,4 +1,4 @@
-//! Optional typed parsing for OpenAI chat completion **streaming** JSON lines (`data:` payloads).
+//! Optional typed parsing for OpenAI **streaming** `data:` JSON: chat completions and Responses API.
 //! For Anthropic messages streaming, see `stream_typing_clu` (features **`anthropic`** +
 //! **`stream-types`**).
 //!
@@ -37,6 +37,29 @@ pub fn parse_openai_chat_stream_json(
     serde_json::from_str(t).map(Some)
 }
 
+/// Parse a single `data:` line from an OpenAI **Responses** SSE stream.
+///
+/// Returns `Ok(None)` for empty data, `[DONE]`, or whitespace-only payloads.
+pub fn parse_openai_response_stream_json(
+    data: &str,
+) -> Result<Option<OpenAiResponseStreamLine>, serde_json::Error> {
+    let t = data.trim();
+    if t.is_empty() || t == "[DONE]" {
+        return Ok(None);
+    }
+    serde_json::from_str(t).map(Some)
+}
+
+/// Minimal typed envelope for Responses streaming events (`type` + forward-compatible extras).
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiResponseStreamLine {
+    /// Event type, e.g. `response.output_item.added`.
+    #[serde(rename = "type")]
+    pub line_type: String,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,5 +75,13 @@ mod tests {
         let v = parse_openai_chat_stream_json(raw).unwrap().unwrap();
         assert_eq!(v.id.as_deref(), Some("c1"));
         assert_eq!(v.choices.len(), 1);
+    }
+
+    #[test]
+    fn parse_response_stream_line() {
+        let raw = r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"msg_1"}}"#;
+        let v = parse_openai_response_stream_json(raw).unwrap().unwrap();
+        assert_eq!(v.line_type, "response.output_item.added");
+        assert_eq!(v.extra.get("output_index").and_then(|x| x.as_u64()), Some(0));
     }
 }

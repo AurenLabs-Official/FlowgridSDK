@@ -16,7 +16,9 @@ macro_rules! contract_fixture {
 
 #[cfg(feature = "openai")]
 mod openai {
-    use flowgrid::ChatCompletion;
+    use flowgrid::{
+        ChatCompletion, Completion, CreateEmbeddingResponse, ResponseObject,
+    };
 
     #[test]
     fn openai_chat_completion_v1_deserialize() {
@@ -26,6 +28,47 @@ mod openai {
             |v| {
                 assert_eq!(v.id, "contract_chat_1");
                 assert_eq!(v.message_content().as_deref(), Some("hello"));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_embedding_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_embedding_v1_deserialize.json",
+            CreateEmbeddingResponse,
+            |v| {
+                assert_eq!(v.data.len(), 1);
+                let u = v.usage.as_ref().expect("usage");
+                assert_eq!(u.prompt_tokens, Some(2));
+                assert_eq!(u.total_tokens, Some(2));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_completion_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_completion_v1_deserialize.json",
+            Completion,
+            |v| {
+                assert_eq!(v.id.as_deref(), Some("cmpl_contract_1"));
+                let u = v.usage.as_ref().expect("usage");
+                assert_eq!(u.completion_tokens, Some(2));
+            }
+        );
+    }
+
+    #[test]
+    fn openai_response_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_response_v1_deserialize.json",
+            ResponseObject,
+            |v| {
+                assert_eq!(v.id, "resp_contract_1");
+                let u = v.usage.as_ref().expect("usage");
+                assert_eq!(u.input_tokens, Some(10));
+                assert_eq!(u.output_tokens, Some(5));
             }
         );
     }
@@ -43,6 +86,25 @@ mod anthropic {
             |v| {
                 assert_eq!(v.id, "contract_msg_1");
                 assert_eq!(v.text_concat().as_deref(), Some("Hi"));
+            }
+        );
+    }
+}
+
+#[cfg(all(feature = "anthropic", feature = "beta"))]
+mod anthropic_beta {
+    use flowgrid::BetaModelsListResponse;
+
+    #[test]
+    fn anthropic_beta_models_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/anthropic_beta_models_v1_deserialize.json",
+            BetaModelsListResponse,
+            |v| {
+                assert_eq!(v.data.len(), 1);
+                assert_eq!(v.data[0].id, "claude-contract-1");
+                assert_eq!(v.data[0].display_name.as_deref(), Some("Contract Model"));
+                assert_eq!(v.data[0].kind.as_deref(), Some("model"));
             }
         );
     }

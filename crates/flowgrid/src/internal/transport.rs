@@ -27,6 +27,11 @@ pub mod oai {
     use std::time::Duration;
     use tokio::time::sleep;
 
+    /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
+    /// response status still triggers a retry (same timing/backoff as built-in retries).
+    pub type RetryIfResponseStatusFn =
+        Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+
     /// Client configuration (clonable, shared by `OpenAI`).
     #[derive(Clone)]
     pub struct ClientConfig {
@@ -55,6 +60,9 @@ pub mod oai {
         pub webhook_secret: Option<String>,
         /// Ceiling for delays taken from `Retry-After` while retrying (default 2 s).
         pub retry_after_max: Duration,
+        /// When set, decides whether an HTTP **success** response with this status is retried (same
+        /// timing/backoff as built-in retries). When `None`, the default rule applies (see module docs).
+        pub retry_if_response_status: Option<RetryIfResponseStatusFn>,
     }
 
     impl ClientConfig {
@@ -80,6 +88,7 @@ pub mod oai {
                 webhook_secret: std::env::var("OPENAI_WEBHOOK_SECRET").ok(),
                 request_hook: None,
                 retry_after_max: Duration::from_millis(2000),
+                retry_if_response_status: None,
             })
         }
     }
@@ -103,6 +112,10 @@ pub mod oai {
                 &self.webhook_secret.as_ref().map(|_| "***"),
             );
             d.field("retry_after_max", &self.retry_after_max);
+            d.field(
+                "retry_if_response_status",
+                &self.retry_if_response_status.as_ref().map(|_| "..."),
+            );
             d.finish()
         }
     }
@@ -261,7 +274,14 @@ pub mod oai {
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
-                        if attempt < max && retry_status(status) {
+                        let retry_resp = if let Some(p) =
+                            self.config.retry_if_response_status.as_ref()
+                        {
+                            p(status, resp.headers())
+                        } else {
+                            retry_status(status)
+                        };
+                        if attempt < max && retry_resp {
                             let headers = resp.headers().clone();
                             drop(resp);
                             retries += 1;
@@ -670,6 +690,11 @@ pub mod clu {
     use std::time::Duration;
     use tokio::time::sleep;
 
+    /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
+    /// response status still triggers a retry.
+    pub type RetryIfResponseStatusFn =
+        Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+
     /// Client configuration.
     #[derive(Clone)]
     pub struct ClientConfig {
@@ -687,6 +712,8 @@ pub mod clu {
         pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
         /// Ceiling for delays taken from `Retry-After` while retrying (default 2 s).
         pub retry_after_max: Duration,
+        /// When set, replaces the default rule for whether a successful HTTP response status triggers a retry.
+        pub retry_if_response_status: Option<RetryIfResponseStatusFn>,
     }
 
     impl ClientConfig {
@@ -710,6 +737,7 @@ pub mod clu {
                 user_agent_suffix: None,
                 request_hook: None,
                 retry_after_max: Duration::from_millis(2000),
+                retry_if_response_status: None,
             })
         }
     }
@@ -726,6 +754,10 @@ pub mod clu {
                 .field("user_agent_suffix", &self.user_agent_suffix)
                 .field("request_hook", &self.request_hook.as_ref().map(|_| "..."))
                 .field("retry_after_max", &self.retry_after_max)
+                .field(
+                    "retry_if_response_status",
+                    &self.retry_if_response_status.as_ref().map(|_| "..."),
+                )
                 .finish()
         }
     }
@@ -867,7 +899,14 @@ pub mod clu {
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
-                        if attempt < max && retry_status(status) {
+                        let retry_resp = if let Some(p) =
+                            self.config.retry_if_response_status.as_ref()
+                        {
+                            p(status, resp.headers())
+                        } else {
+                            retry_status(status)
+                        };
+                        if attempt < max && retry_resp {
                             let headers = resp.headers().clone();
                             drop(resp);
                             retries += 1;

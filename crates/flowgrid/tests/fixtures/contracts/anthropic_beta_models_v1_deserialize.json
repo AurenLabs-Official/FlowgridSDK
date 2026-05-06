@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "id": "claude-contract-1",
+      "display_name": "Contract Model",
+      "type": "model"
+    }
+  ],
+  "has_more": false
+}

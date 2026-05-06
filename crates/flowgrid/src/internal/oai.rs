@@ -38,16 +38,17 @@ pub use crate::internal::sse::oai::{OpenAiSseEventStream, SseEvent, SseStream};
 
 #[cfg(feature = "stream-types")]
 pub use crate::internal::stream_typing::{
-    parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,
+    parse_openai_chat_stream_json, parse_openai_response_stream_json, OpenAiChatChunkChoice,
+    OpenAiChatCompletionChunk, OpenAiResponseStreamLine,
 };
 
 pub use crate::internal::resources::{
     BoxedByteStream, ChatClient, ChatCompletion, ChatCompletionChoice, ChatCompletionDeleted,
     ChatCompletionListParams, ChatCompletionMessage, ChatCompletionMessagesListParams,
-    ChatCompletionsClient, Completion, CompletionChoice, CompletionsClient,
+    ChatCompletionsClient, Completion, CompletionChoice, CompletionUsage, CompletionsClient,
     CreateChatCompletionRequest, CreateCompletionRequest, CreateEmbeddingRequest,
-    CreateEmbeddingResponse, CreateResponseRequest, Embedding, EmbeddingsClient, ResponseDeleted,
-    ResponseObject, ResponsesClient,
+    CreateEmbeddingResponse, CreateResponseRequest, Embedding, EmbeddingUsage, EmbeddingsClient,
+    ResponseDeleted, ResponseObject, ResponseObjectUsage, ResponsesClient,
 };
 
 #[cfg(feature = "azure")]
