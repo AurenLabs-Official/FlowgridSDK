@@ -1,0 +1,7 @@
+{
+  "id": "resp_fixture_1",
+  "object": "response",
+  "model": "gpt-test",
+  "output": [],
+  "usage": null
+}

@@ -165,7 +165,7 @@ pub mod oai {
     }
 
     /// Fluent client builder.
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Default)]
     pub struct ClientBuilder {
         api_key: Option<String>,
         base_url: Option<String>,
@@ -176,6 +176,25 @@ pub mod oai {
         user_agent_suffix: Option<String>,
         #[cfg(feature = "webhooks")]
         webhook_secret: Option<String>,
+    }
+
+    impl std::fmt::Debug for ClientBuilder {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut d = f.debug_struct("ClientBuilder");
+            d.field("api_key", &self.api_key.as_ref().map(|_| "***"));
+            d.field("base_url", &self.base_url);
+            d.field("org_id", &self.org_id);
+            d.field("project_id", &self.project_id);
+            d.field("timeout", &self.timeout);
+            d.field("max_retries", &self.max_retries);
+            d.field("user_agent_suffix", &self.user_agent_suffix);
+            #[cfg(feature = "webhooks")]
+            d.field(
+                "webhook_secret",
+                &self.webhook_secret.as_ref().map(|_| "***"),
+            );
+            d.finish()
+        }
     }
 
     impl ClientBuilder {
@@ -328,7 +347,7 @@ pub mod clu {
         }
     }
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Default)]
     pub struct AnthropicBuilder {
         api_key: Option<String>,
         base_url: Option<String>,
@@ -337,6 +356,20 @@ pub mod clu {
         timeout: Option<Duration>,
         max_retries: Option<u32>,
         user_agent_suffix: Option<String>,
+    }
+
+    impl std::fmt::Debug for AnthropicBuilder {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("AnthropicBuilder")
+                .field("api_key", &self.api_key.as_ref().map(|_| "***"))
+                .field("base_url", &self.base_url)
+                .field("anthropic_version", &self.anthropic_version)
+                .field("anthropic_beta", &self.anthropic_beta)
+                .field("timeout", &self.timeout)
+                .field("max_retries", &self.max_retries)
+                .field("user_agent_suffix", &self.user_agent_suffix)
+                .finish()
+        }
     }
 
     impl AnthropicBuilder {

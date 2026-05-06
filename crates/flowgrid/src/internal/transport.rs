@@ -13,7 +13,7 @@ pub mod oai {
     use tokio::time::sleep;
 
     /// Client configuration (clonable, shared by `OpenAI`).
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub struct ClientConfig {
         /// API key (`Bearer` by default; Azure uses `api-key` header).
         pub api_key: String,
@@ -60,6 +60,27 @@ pub mod oai {
                 #[cfg(feature = "webhooks")]
                 webhook_secret: std::env::var("OPENAI_WEBHOOK_SECRET").ok(),
             })
+        }
+    }
+
+    impl std::fmt::Debug for ClientConfig {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut d = f.debug_struct("ClientConfig");
+            d.field("api_key", &"***");
+            d.field("base_url", &self.base_url);
+            d.field("use_api_key_header", &self.use_api_key_header);
+            d.field("default_query", &self.default_query);
+            d.field("org_id", &self.org_id);
+            d.field("project_id", &self.project_id);
+            d.field("timeout", &self.timeout);
+            d.field("max_retries", &self.max_retries);
+            d.field("user_agent_suffix", &self.user_agent_suffix);
+            #[cfg(feature = "webhooks")]
+            d.field(
+                "webhook_secret",
+                &self.webhook_secret.as_ref().map(|_| "***"),
+            );
+            d.finish()
         }
     }
 
@@ -210,6 +231,50 @@ pub mod oai {
             }
         }
 
+        async fn send_traced(
+            &self,
+            rb: RequestBuilder,
+            method: Method,
+            path: &str,
+        ) -> Result<Response> {
+            #[cfg(feature = "tracing")]
+            {
+                use std::time::Instant;
+                let start = Instant::now();
+                let m = method.as_str();
+                tracing::debug!(target: "flowgrid_http", provider = "openai", method = m, path, "request");
+                let result = self.send_with_retries(rb).await;
+                match &result {
+                    Ok(resp) => {
+                        tracing::debug!(
+                            target: "flowgrid_http",
+                            provider = "openai",
+                            method = m,
+                            path,
+                            status = %resp.status(),
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "response",
+                        );
+                    }
+                    Err(_) => {
+                        tracing::debug!(
+                            target: "flowgrid_http",
+                            provider = "openai",
+                            method = m,
+                            path,
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "request_failed",
+                        );
+                    }
+                }
+                result
+            }
+            #[cfg(not(feature = "tracing"))]
+            {
+                self.send_with_retries(rb).await
+            }
+        }
+
         fn api_error_from_text(status: StatusCode, text: &str, headers: HeaderMap) -> ApiError {
             let request_id = headers
                 .get("x-request-id")
@@ -233,7 +298,7 @@ pub mod oai {
             body: Option<&B>,
         ) -> Result<(T, ResponseMeta)> {
             let url = self.url(path)?;
-            let rb = self.inner.request(method, url.as_str());
+            let rb = self.inner.request(method.clone(), url.as_str());
             let rb = match body {
                 Some(b) => self
                     .apply_default_headers(rb)
@@ -241,7 +306,7 @@ pub mod oai {
                     .json(b),
                 None => self.apply_default_headers(rb),
             };
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, method, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -266,7 +331,7 @@ pub mod oai {
         pub async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.apply_default_headers(self.inner.get(url.as_str()));
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::GET, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -307,7 +372,7 @@ pub mod oai {
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::POST, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -342,7 +407,7 @@ pub mod oai {
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::POST, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             if !status.is_success() {
@@ -364,7 +429,7 @@ pub mod oai {
             let rb = self
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .multipart(form);
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::POST, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -386,7 +451,7 @@ pub mod oai {
             let rb = self
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .multipart(form);
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::POST, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -414,7 +479,7 @@ pub mod clu {
     use tokio::time::sleep;
 
     /// Client configuration.
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub struct ClientConfig {
         /// API key (`x-api-key`).
         pub api_key: String,
@@ -449,6 +514,20 @@ pub mod clu {
                 max_retries: 2,
                 user_agent_suffix: None,
             })
+        }
+    }
+
+    impl std::fmt::Debug for ClientConfig {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("ClientConfig")
+                .field("api_key", &"***")
+                .field("base_url", &self.base_url)
+                .field("anthropic_version", &self.anthropic_version)
+                .field("anthropic_beta", &self.anthropic_beta)
+                .field("timeout", &self.timeout)
+                .field("max_retries", &self.max_retries)
+                .field("user_agent_suffix", &self.user_agent_suffix)
+                .finish()
         }
     }
 
@@ -582,6 +661,50 @@ pub mod clu {
             }
         }
 
+        async fn send_traced(
+            &self,
+            rb: RequestBuilder,
+            method: Method,
+            path: &str,
+        ) -> Result<Response> {
+            #[cfg(feature = "tracing")]
+            {
+                use std::time::Instant;
+                let start = Instant::now();
+                let m = method.as_str();
+                tracing::debug!(target: "flowgrid_http", provider = "anthropic", method = m, path, "request");
+                let result = self.send_with_retries(rb).await;
+                match &result {
+                    Ok(resp) => {
+                        tracing::debug!(
+                            target: "flowgrid_http",
+                            provider = "anthropic",
+                            method = m,
+                            path,
+                            status = %resp.status(),
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "response",
+                        );
+                    }
+                    Err(_) => {
+                        tracing::debug!(
+                            target: "flowgrid_http",
+                            provider = "anthropic",
+                            method = m,
+                            path,
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "request_failed",
+                        );
+                    }
+                }
+                result
+            }
+            #[cfg(not(feature = "tracing"))]
+            {
+                self.send_with_retries(rb).await
+            }
+        }
+
         fn api_error_from_text(status: StatusCode, text: &str, headers: HeaderMap) -> ApiError {
             let request_id = headers
                 .get("request-id")
@@ -606,7 +729,7 @@ pub mod clu {
             accept: &str,
         ) -> Result<(T, ResponseMeta)> {
             let url = self.url(path)?;
-            let rb = self.inner.request(method, url.as_str());
+            let rb = self.inner.request(method.clone(), url.as_str());
             let rb = match body {
                 Some(b) => self
                     .apply_default_headers(rb, accept)
@@ -614,7 +737,7 @@ pub mod clu {
                     .json(b),
                 None => self.apply_default_headers(rb, accept),
             };
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, method, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -672,7 +795,7 @@ pub mod clu {
                 )
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::POST, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             if !status.is_success() {
@@ -687,7 +810,7 @@ pub mod clu {
         pub async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.apply_default_headers(self.inner.get(url.as_str()), "*/*");
-            let resp = self.send_with_retries(rb).await?;
+            let resp = self.send_traced(rb, Method::GET, path).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();

@@ -11,13 +11,25 @@ use crate::internal::transport::oai::{ClientConfig, HttpTransport};
 use std::time::Duration;
 
 /// Builder for Azure OpenAI (`AzureOpenAI` in Node).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct AzureClientBuilder {
     api_key: Option<String>,
     endpoint: Option<String>,
     api_version: Option<String>,
     timeout: Option<Duration>,
     max_retries: Option<u32>,
+}
+
+impl std::fmt::Debug for AzureClientBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AzureClientBuilder")
+            .field("api_key", &self.api_key.as_ref().map(|_| "***"))
+            .field("endpoint", &self.endpoint)
+            .field("api_version", &self.api_version)
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
 }
 
 impl AzureClientBuilder {

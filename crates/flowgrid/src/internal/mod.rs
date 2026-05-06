@@ -9,6 +9,8 @@ mod error;
 pub mod resources;
 mod sse;
 mod stream_types;
+#[cfg(all(feature = "openai", feature = "stream-types"))]
+mod stream_typing;
 mod transport;
 
 #[cfg(feature = "openai")]

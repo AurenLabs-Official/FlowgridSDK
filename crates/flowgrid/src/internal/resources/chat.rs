@@ -6,6 +6,8 @@ use crate::internal::stream_types::BoxedByteStream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::paths::join_path;
+
 /// Chat namespace (`client.chat`).
 pub struct ChatClient<'a> {
     inner: &'a OpenAI,
@@ -80,7 +82,7 @@ impl<'a> ChatCompletionsClient<'a> {
 
     /// `GET /chat/completions/{id}`
     pub async fn retrieve(&self, id: impl AsRef<str>) -> Result<ChatCompletion> {
-        let path = format!("chat/completions/{}", id.as_ref());
+        let path = join_path("chat/completions", id.as_ref());
         let (v, _) = self.inner.transport.get_json(&path).await?;
         Ok(v)
     }
@@ -91,7 +93,7 @@ impl<'a> ChatCompletionsClient<'a> {
         id: impl AsRef<str>,
         body: &serde_json::Value,
     ) -> Result<ChatCompletion> {
-        let path = format!("chat/completions/{}", id.as_ref());
+        let path = join_path("chat/completions", id.as_ref());
         let (v, _) = self.inner.transport.patch_json(&path, body).await?;
         Ok(v)
     }
@@ -123,7 +125,7 @@ impl<'a> ChatCompletionsClient<'a> {
 
     /// `DELETE /chat/completions/{id}`
     pub async fn delete(&self, id: impl AsRef<str>) -> Result<ChatCompletionDeleted> {
-        let path = format!("chat/completions/{}", id.as_ref());
+        let path = join_path("chat/completions", id.as_ref());
         let (v, _) = self.inner.transport.delete_json(&path).await?;
         Ok(v)
     }
@@ -134,7 +136,10 @@ impl<'a> ChatCompletionsClient<'a> {
         completion_id: impl AsRef<str>,
         params: &ChatCompletionMessagesListParams,
     ) -> Result<ListPage<serde_json::Value>> {
-        let mut path = format!("chat/completions/{}/messages", completion_id.as_ref());
+        let mut path = join_path(
+            &join_path("chat/completions", completion_id.as_ref()),
+            "messages",
+        );
         let mut ser = url::form_urlencoded::Serializer::new(String::new());
         if let Some(limit) = params.limit {
             ser.append_pair("limit", &limit.to_string());

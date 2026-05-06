@@ -47,6 +47,7 @@ pub mod oai {
     }
 
     /// Structured API error from OpenAI responses (4xx/5xx with body).
+    /// `Display` truncates raw body text to 512 characters if no structured body is present.
     #[derive(Debug, Clone)]
     pub struct ApiError {
         /// HTTP status.
@@ -173,6 +174,7 @@ pub mod clu {
     }
 
     /// Structured API error (Anthropic JSON).
+    /// `Display` truncates raw body text to 512 characters when no structured body is present.
     #[derive(Debug, Clone)]
     pub struct ApiError {
         /// HTTP status.

@@ -24,6 +24,15 @@ jobs:
       - name: test
         run: cargo test --workspace --all-features
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (MSRV)
+        run: cargo check -p flowgrid --all-features
+
   feature-matrix:
     runs-on: ubuntu-latest
     strategy:
@@ -35,6 +44,10 @@ jobs:
           - --no-default-features --features openai,files
           - --no-default-features --features openai,webhooks
           - --no-default-features --features openai,azure
+          - --no-default-features --features openai,realtime
+          - --no-default-features --features anthropic,batches
+          - --no-default-features --features anthropic,beta
+          - --no-default-features --features openai,stream-types
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

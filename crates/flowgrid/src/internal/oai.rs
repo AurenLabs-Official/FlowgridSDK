@@ -34,6 +34,11 @@ pub use crate::internal::error::oai::{
 pub use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta};
 pub use pagination::ListPage;
 
+#[cfg(feature = "stream-types")]
+pub use crate::internal::stream_typing::{
+    parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,
+};
+
 pub use crate::internal::resources::{
     BoxedByteStream, ChatClient, ChatCompletion, ChatCompletionChoice, ChatCompletionDeleted,
     ChatCompletionListParams, ChatCompletionMessage, ChatCompletionMessagesListParams,

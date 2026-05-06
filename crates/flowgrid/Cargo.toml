@@ -6,6 +6,10 @@ rust-version = "1.75"
 license = "MIT OR Apache-2.0"
 description = "Unified async HTTP clients for OpenAI and Anthropic (feature-gated)."
 repository = "https://github.com/example/flowgrid-sdk"
+homepage = "https://github.com/example/flowgrid-sdk"
+documentation = "https://docs.rs/flowgrid"
+keywords = ["openai", "anthropic", "claude", "api", "async"]
+categories = ["api-bindings", "web-programming::http-client"]
 
 [lib]
 name = "flowgrid"
@@ -14,6 +18,7 @@ path = "src/lib.rs"
 [features]
 default = ["openai", "anthropic"]
 full = [
+    "stream-types",
     "files",
     "images",
     "audio",
@@ -32,6 +37,8 @@ full = [
     "beta",
 ]
 tracing = ["dep:tracing"]
+# Optional typed helpers for OpenAI streaming SSE `data:` JSON (requires `openai`).
+stream-types = []
 openai = []
 anthropic = []
 files = []

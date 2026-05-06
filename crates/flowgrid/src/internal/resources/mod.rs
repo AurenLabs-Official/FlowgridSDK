@@ -5,6 +5,8 @@ mod completions;
 #[cfg(feature = "openai")]
 mod embeddings;
 #[cfg(feature = "openai")]
+mod paths;
+#[cfg(feature = "openai")]
 mod responses;
 
 #[cfg(all(feature = "openai", feature = "admin"))]

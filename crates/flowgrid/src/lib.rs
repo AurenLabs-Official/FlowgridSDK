@@ -82,6 +82,11 @@ pub use internal::clu::{
 #[cfg(feature = "openai")]
 pub use internal::oai::{ClientBuilder, OpenAI};
 
+#[cfg(all(feature = "openai", feature = "stream-types"))]
+pub use internal::oai::{
+    parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,
+};
+
 #[cfg(feature = "openai")]
 pub use internal::oai::{ErrorDetail, ErrorObject, ListPage};
 
