@@ -2,32 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Stability
-
-The semver-stable contract is the **`pub use` items at the `flowgrid` crate root** (see crate documentation). The `internal` module tree is implementation detail and may change in minor releases.
-
 ### Added
 
-- Cookbook examples in README (non-stream chat, streaming with `into_event_stream`, Anthropic messages).
-- MSRV CI job (Rust 1.75) and expanded GitHub Actions feature-matrix for optional feature combinations.
-- `tracing` spans/events on HTTP transport when the `tracing` feature is enabled (`target: flowgrid_http`).
-- Wiremock SSE integration test; golden fixture for `ResponseObject` deserialization; Wiremock test for `request_pre_send_hook`.
-- Optional `stream-types` Cargo feature: helpers to parse OpenAI / Anthropic streaming SSE JSON payloads from `SseEvent::data`.
-- `pub(crate)` `join_path` helper for resource URL segments.
-- `ClientBuilder::new`, `AnthropicBuilder::new` (aliases for `Default`).
-- Cargo features **`tls-rustls`** (default) and **`tls-native`** for `reqwest` TLS (mutually exclusive).
-- **`request_pre_send_hook`** on `ClientBuilder`, `AnthropicBuilder`, and `AzureClientBuilder` for last-chance header changes before send.
-- Optional **`opentelemetry`** feature: histogram `flowgrid.http.request.duration_ms` on each HTTP round-trip.
-- Examples `openai_chat_stream` and `anthropic_message`; CI uses `full` instead of `--all-features` (TLS conflict).
-- **`cargo-semver-checks`** CI job.
+- Observability: `tracing` span `flowgrid.http.request` with retry, request id, and rate-limit fields; OpenTelemetry metric attribute `flowgrid.retry_count`; runbook `docs/observability.md`.
+- Optional **`cancel`** Cargo feature and `stream_next_until_cancelled` helper for cooperative SSE/stream shutdown.
+- Contract fixture naming convention, `tools/import_contract` scripts, and Criterion `hot_path` benchmarks.
+- Developer `justfile`, `docs/migration.md`, supply-chain CI (`cargo deny` / `cargo audit`), and governance docs (`CONTRIBUTING.md`, this file).
 
-### Changed
+### Documentation
 
-- `Debug` for client configs and builders redacts API keys and webhook secrets.
-- `homepage` / `documentation` / `keywords` / `categories` in `Cargo.toml`; repository remains a publish-time placeholder (`example/flowgrid-sdk`).
-- Default features now include **`tls-rustls`**; `reqwest` no longer hard-codes a TLS stack without this feature.
-- **`full`** also enables **`tracing`** (not `opentelemetry`).
+- README: security and privacy, platform limits (WASM/edge), serde stance, cancellation patterns, benchmarks, commercial/compatibility placeholders.
+
+## [0.1.0] - YYYY-MM-DD
+
+Initial crates.io-aligned snapshot (replace date on first publish).
+
+[Unreleased]: https://github.com/example/flowgrid-sdk/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/example/flowgrid-sdk/releases/tag/v0.1.0

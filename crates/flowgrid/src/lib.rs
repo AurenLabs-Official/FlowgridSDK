@@ -20,6 +20,9 @@
 pub use internal::error::ProviderKind;
 pub use internal::execute_options::ExecuteOptions;
 
+#[cfg(feature = "cancel")]
+pub use internal::stream_cancel::stream_next_until_cancelled;
+
 #[cfg(all(feature = "tls-rustls", feature = "tls-native"))]
 compile_error!("flowgrid: enable at most one of `tls-rustls` or `tls-native`");
 

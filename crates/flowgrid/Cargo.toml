@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT OR Apache-2.0"
-description = "Unified async HTTP clients for OpenAI and Anthropic (feature-gated)."
+description = "Production-oriented OpenAI + Anthropic HTTP client: predictable retries, timeouts, errors, streaming, and observability (feature-gated)."
 repository = "https://github.com/example/flowgrid-sdk"
 homepage = "https://github.com/example/flowgrid-sdk"
 documentation = "https://docs.rs/flowgrid"
@@ -46,6 +46,7 @@ tls-rustls = ["reqwest/rustls-tls"]
 tls-native = ["reqwest/native-tls"]
 tracing = ["dep:tracing"]
 opentelemetry = ["dep:opentelemetry"]
+cancel = []
 # Typed SSE `data:` JSON helpers (provider-specific feature also required).
 stream-types = []
 openai = []
@@ -95,9 +96,14 @@ tokio-tungstenite = { version = "0.24", optional = true, features = [
 ] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["async_tokio"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6"
 serde_json = "1"
+
+[[bench]]
+name = "hot_path"
+harness = false
 
 [[example]]
 name = "openai_chat_stream"

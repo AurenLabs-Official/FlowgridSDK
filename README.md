@@ -1,6 +1,10 @@
 # FlowgridSDK
 
-Single Rust crate **`flowgrid`** with async HTTP clients for **[OpenAI](https://platform.openai.com/docs/api-reference)** and **[Anthropic](https://docs.anthropic.com/en/api/getting-started)**. Enable either or both with Cargo features (`openai`, `anthropic`; both are on by default). The public API lives at the crate root (there are no `flowgrid::openai` / `flowgrid::anthropic` modules).
+**Same mental model. Two providers. One Rust type system.**
+
+`flowgrid` is a **production-oriented control plane** for calling **[OpenAI](https://platform.openai.com/docs/api-reference)** and **[Anthropic](https://docs.anthropic.com/en/api/getting-started)** from async Rust—not a minimal thin wrapper, but **predictable** behavior you can operate: shared patterns for **retries** (`Retry-After`, caps), **per-call timeouts**, **structured errors** (`body_snippet`, `retry_after`, `ProviderKind`), **SSE streaming** (including `Unpin` event streams), and **response metadata** (request ids, rate-limit headers where exposed).
+
+Enable either or both providers with Cargo features (`openai`, `anthropic`; both default on). The stable API is the **crate root** `pub use` surface (no `flowgrid::openai` / `flowgrid::anthropic` modules).
 
 Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml) with your Git remote before publishing to [crates.io](https://crates.io).
 
@@ -28,6 +32,40 @@ async fn example() -> Result<(), flowgrid::OpenAiError> {
     Ok(())
 }
 ```
+
+### OpenAI chat (SSE streaming + cooperative cancel)
+
+Use [`stream_next_until_cancelled`](https://docs.rs/flowgrid/latest/flowgrid/fn.stream_next_until_cancelled.html) (feature **`cancel`**) together with a [`CancellationToken`](https://docs.rs/tokio-util/latest/tokio_util/sync/struct.CancellationToken.html) so shutdown or `tokio::select!` can stop draining events **without** waiting for the HTTP timeout. Combine with **[`ExecuteOptions::timeout`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html)** for per-call network bounds.
+
+```rust,ignore
+use flowgrid::{stream_next_until_cancelled, ClientBuilder, CreateChatCompletionRequest};
+use tokio_util::sync::CancellationToken;
+
+async fn example() -> Result<(), flowgrid::OpenAiError> {
+    let cancel = CancellationToken::new();
+    let client = ClientBuilder::new().api_key("sk-...").build()?;
+    let req = CreateChatCompletionRequest {
+        model: "gpt-4o-mini".into(),
+        messages: vec![CreateChatCompletionRequest::user_message("Hi")],
+        stream: Some(true),
+        extra: Default::default(),
+    };
+    let (sse, _meta) = client.chat().completions().create_stream(&req).await?;
+    let mut events = sse.into_unpin_event_stream();
+    loop {
+        let Some(item) = stream_next_until_cancelled(&mut events, &cancel).await else {
+            break; // cancelled
+        };
+        let ev = item?;
+        if ev.data.trim() == "[DONE]" {
+            break;
+        }
+    }
+    Ok(())
+}
+```
+
+For one-shot timeouts around a **single** `next()` only, `tokio::time::timeout(duration, events.next())` is fine; prefer **`cancel`** when the same token is shared across tasks (graceful shutdown).
 
 ### OpenAI chat (SSE streaming)
 
@@ -131,7 +169,8 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 - OpenAI extras: `files`, `images`, `audio`, `moderations`, `batches`, `fine_tuning`, `evals`, `assistants`, `vector_stores`, `containers`, `admin`, `webhooks`, `azure`, `realtime`, `tracing`.
 - Anthropic extras: `batches`, `models`, `beta` (also gated by `anthropic`).
 - **`stream-types`**: optional typed parsing for streaming `data:` JSON (OpenAI chat chunks when `openai` is on; Anthropic message stream events when `anthropic` is on).
-- **`opentelemetry`**: records `flowgrid.http.request.duration_ms` via the OpenTelemetry metrics API (install a meter provider in your app).
+- **`opentelemetry`**: records `flowgrid.http.request.duration_ms` via the OpenTelemetry metrics API (install a meter provider in your app). Span/metric naming and dashboard hints are documented in [`docs/observability.md`](docs/observability.md).
+- **`cancel`**: exposes [`stream_next_until_cancelled`](https://docs.rs/flowgrid/latest/flowgrid/fn.stream_next_until_cancelled.html) for cooperative shutdown while reading SSE/event streams (see Cookbook).
 - **`full`**: enables all optional areas above **except** TLS switching and **except** `opentelemetry` (enable `opentelemetry` explicitly when needed).
 
 Shared feature name **`batches`** turns on batch APIs for whichever provider(s) you have enabled.
@@ -160,17 +199,64 @@ Successful [`OpenAiResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.
 
 ## Per-call timeouts
 
-[`ExecuteOptions`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) overrides the HTTP timeout for a single request (including streaming entrypoints) without building a new client. Chat and Messages expose `create_with_options`, `create_stream_with_options`, and `create_with_response_and_options`. Lower layers also provide `get_json_with_options` / `post_json_with_options` on the transports. For cancellation beyond timeouts, you can still wrap futures with `tokio::time::timeout` or your runtime’s equivalents.
+[`ExecuteOptions`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) overrides the HTTP timeout for a single request (including streaming entrypoints) without building a new client. Chat and Messages expose `create_with_options`, `create_stream_with_options`, and `create_with_response_and_options`. Lower layers also provide `get_json_with_options` / `post_json_with_options` on the transports. For cancellation beyond timeouts, use **`tokio::select!`**, **`tokio::time::timeout`** around **`StreamExt::next`**, or the optional **`cancel`** feature with **[`stream_next_until_cancelled`](https://docs.rs/flowgrid/latest/flowgrid/fn.stream_next_until_cancelled.html)** (see Cookbook).
 
 ## Contract fixtures
 
-Versioned JSON under [`crates/flowgrid/tests/fixtures/contracts/`](crates/flowgrid/tests/fixtures/contracts/) guards deserialization of public response types (`ChatCompletion`, `Message`, …). **Add or update a fixture** when you introduce a new publicly relied-on field or when a provider’s JSON shape changes; keep filenames predictable (`openai_<resource>_…`, `anthropic_…`). Tests are offline (`serde_json` only).
+Versioned JSON under [`crates/flowgrid/tests/fixtures/contracts`](crates/flowgrid/tests/fixtures/contracts) guards deserialization of public response types (`ChatCompletion`, `Message`, …).
 
-## Releases and semver baseline
+**Naming:** `openai_<resource>_v<api_hint>_<scenario>.json` and `anthropic_<resource>_v<api_hint>_<scenario>.json` (example: `openai_chat_completion_v1_deserialize.json`). **Add or update** a fixture when you introduce a new publicly relied-on field or when a provider’s JSON shape changes. Tests are offline (`serde_json` only) and the **`contracts`** CI job runs `cargo test -p flowgrid --features full contract_` for a fast loop.
 
-API compatibility for the crate root `pub use` surface is checked in CI with [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks) against a committed rustdoc JSON baseline: [`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json). CI regenerates current rustdoc on **nightly** with `cargo rustdoc -p flowgrid --features full -Z unstable-options -- …` and passes `--current-rustdoc target/doc/flowgrid.json` so the check never enables conflicting TLS features.
+To import a capture from a proxy or logs, use [`tools/import_contract.ps1`](tools/import_contract.ps1) / [`tools/import_contract.sh`](tools/import_contract.sh) (stdin/file in → redacted JSON out); **always review** the output for secrets before committing.
 
-When you **release** a version that changes the public API, refresh the baseline from the same nightly invocation (from the repo root, after bumping the crate version if needed), copy `target/doc/flowgrid.json` over `crates/flowgrid/semver/baseline_rustdoc.json`, and commit it together with the release PR.
+## Benchmarks
+
+```bash
+cargo bench -p flowgrid --features full
+```
+
+The **`hot_path`** target exercises contract JSON deserialization and a small SSE parse through the public **`SseStream`**. Results are relative to your machine; use them for regressions, not provider latency claims.
+
+## Security & privacy
+
+- **API keys** are supplied by your app (headers / builders). The SDK does **not** phone home or send SDK-level telemetry.
+- **Errors:** `Debug` / `Display` on error types may include **`body_snippet`**, `request_id`, and header-derived timing fields—treat logs as sensitive when customer data is present. Do **not** log full response bodies in hooks; see [`docs/observability.md`](docs/observability.md).
+- **Trust boundaries:** your binary → `flowgrid` (configured TLS to provider) → vendor API. The crate does **not** persist prompts or completions beyond what you hold in memory in response types.
+
+CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your org’s advisory policies in [`deny.toml`](deny.toml).
+
+## Platform support
+
+**`wasm32-*` / edge runtimes** are **not supported** targets today: the stack assumes a full Tokio + native TLS (`reqwest`) environment. **Serde** is the supported serialization layer for provider JSON; alternate serializers are **explicit non-goals** until a concrete requirement appears (would imply a parallel type system).
+
+## Commercial support & compatibility
+
+**Commercial support:** placeholder—add your contact, review/audit offerings, or support SLAs here before publishing.
+
+**Compatibility:** responses in this repo are covered by **offline contract fixtures** and **`cargo test`** with feature `full`. Live provider endpoints are exercised only where **`--ignored`** tests and manual smoke runs are documented; there is **no** guarantee of blanket parity with every beta flag or preview endpoint. Expand this matrix honestly as you add checks:
+
+| Area | Coverage |
+|------|-----------|
+| OpenAI chat completions (non-stream) | Contract fixture + typed API |
+| OpenAI chat completions (SSE) | Example + streaming tests where present |
+| Anthropic Messages (non-stream) | Contract fixture + typed API |
+| Other submodules | Feature-gated compile + unit/integration coverage (varies) |
+
+## Governance & contributing
+
+- **[`CHANGELOG.md`](CHANGELOG.md)** — release notes (Keep a Changelog).
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
+- **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
+
+**Releases / semver:** API compatibility for the crate root `pub use` surface is checked in CI with [**cargo-semver-checks**](https://github.com/obi1kenobi/cargo-semver-checks) against [`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json). CI regenerates rustdoc on **nightly** (`cargo rustdoc -p flowgrid --features full -Z unstable-options -- …`) and passes `--current-rustdoc target/doc/flowgrid.json` so conflicting TLS features are never enabled together. When you ship an intentional API change, refresh that baseline in the **same** PR as the version bump (see CONTRIBUTING).
+
+## Migrating
+
+See **[`docs/migration.md`](docs/migration.md)** for configuration, errors, streaming, and TLS notes.
+
+## Developer workflow (`just`)
+
+Optional [**`just`**](https://github.com/casey/just) recipes mirror CI: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just deny`, `just audit`.
 
 ## License
 

@@ -20,6 +20,9 @@ mod transport;
 #[cfg(feature = "opentelemetry")]
 mod otel_http;
 
+#[cfg(feature = "cancel")]
+pub mod stream_cancel;
+
 #[cfg(feature = "openai")]
 mod pagination;
 

@@ -1,4 +1,9 @@
 //! Optional HTTP client metrics (feature `opentelemetry`).
+//!
+//! **Cardinality:** Treat `flowgrid.http.path` as a small set of logical routes (what the
+//! transport passes as the URL path segment). Do not attach unbounded values such as full URLs or
+//! per-request ids to metrics. Prefer correlating individual requests via **`tracing`** spans
+//! (see the repository `docs/observability.md` runbook).
 
 use opentelemetry::{global, KeyValue};
 use reqwest::StatusCode;
@@ -15,12 +20,16 @@ fn status_class(status: StatusCode) -> &'static str {
 }
 
 /// Record request duration (milliseconds) for an outbound API call.
+///
+/// Keep labels low-cardinality: `flowgrid.http.path` is the logical API path (e.g. `chat/completions`),
+/// not a full URL. Avoid adding `request_id` here—it can explode series count in Prometheus.
 pub(crate) fn record_duration_ms(
     elapsed_ms: f64,
     provider: &'static str,
     method: &str,
     path: &str,
     status: Option<StatusCode>,
+    retry_count: u32,
 ) {
     let (status_class, error_flag) = match status {
         Some(s) => (status_class(s), "false"),
@@ -41,6 +50,7 @@ pub(crate) fn record_duration_ms(
             KeyValue::new("flowgrid.http.path", path.to_string()),
             KeyValue::new("http.response.status_class", status_class),
             KeyValue::new("flowgrid.http.error", error_flag),
+            KeyValue::new("flowgrid.retry_count", i64::from(retry_count)),
         ],
     );
 }

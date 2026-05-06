@@ -242,23 +242,29 @@ pub mod oai {
             }
         }
 
-        async fn send_with_retries(&self, rb: RequestBuilder) -> Result<Response> {
+        async fn send_with_retries(&self, rb: RequestBuilder) -> (Result<Response>, u32) {
             let max = self.config.max_retries as usize;
             let mut attempt = 0usize;
             let mut rb = rb;
             let cap = self.config.retry_after_max;
+            let mut retries = 0u32;
             loop {
                 let clone = rb.try_clone().ok_or_else(|| {
                     crate::internal::error::oai::Error::Config(
                         "request could not be cloned for retries".to_string(),
                     )
-                })?;
+                });
+                let clone = match clone {
+                    Ok(c) => c,
+                    Err(e) => return (Err(e), retries),
+                };
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
                         if attempt < max && retry_status(status) {
                             let headers = resp.headers().clone();
                             drop(resp);
+                            retries += 1;
                             let delay =
                                 sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
                             sleep(delay).await;
@@ -266,16 +272,17 @@ pub mod oai {
                             attempt += 1;
                             continue;
                         }
-                        return Ok(resp);
+                        return (Ok(resp), retries);
                     }
                     Err(e) => {
                         if attempt < max && retry_error(&e) {
+                            retries += 1;
                             sleep(backoff((attempt + 1) as u32).min(cap)).await;
                             rb = clone;
                             attempt += 1;
                             continue;
                         }
-                        return Err(e.into());
+                        return (Err(e.into()), retries);
                     }
                 }
             }
@@ -297,14 +304,49 @@ pub mod oai {
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
-            tracing::debug!(
-                target: "flowgrid_http",
-                provider = "openai",
-                method = method.as_str(),
-                path,
-                "request",
-            );
-            let result = self.send_with_retries(rb).await;
+            let (result, retry_count) = {
+                use tracing::Instrument;
+                let method_for_span = method.clone();
+                let span = tracing::info_span!(
+                    "flowgrid.http.request",
+                    flowgrid.provider = "openai",
+                    http.request.method = %method_for_span.as_str(),
+                    flowgrid.api.path = path,
+                    flowgrid.retry_count = tracing::field::Empty,
+                    flowgrid.request_id = tracing::field::Empty,
+                    flowgrid.ratelimit.requests.remaining = tracing::field::Empty,
+                    flowgrid.ratelimit.requests.reset = tracing::field::Empty,
+                );
+                let span_record = span.clone();
+                async move {
+                    tracing::debug!(
+                        target: "flowgrid_http",
+                        provider = "openai",
+                        method = method_for_span.as_str(),
+                        path,
+                        "request",
+                    );
+                    let (result, retry_count) = self.send_with_retries(rb).await;
+                    span_record.record("flowgrid.retry_count", retry_count);
+                    if let Ok(ref resp) = result {
+                        let meta = response_meta(resp);
+                        if let Some(ref id) = meta.request_id {
+                            span_record.record("flowgrid.request_id", id.as_str());
+                        }
+                        if let Some(ref v) = meta.rate_limit_remaining_requests {
+                            span_record.record("flowgrid.ratelimit.requests.remaining", v.as_str());
+                        }
+                        if let Some(ref v) = meta.rate_limit_reset_requests {
+                            span_record.record("flowgrid.ratelimit.requests.reset", v.as_str());
+                        }
+                    }
+                    (result, retry_count)
+                }
+                .instrument(span)
+                .await
+            };
+            #[cfg(not(feature = "tracing"))]
+            let (result, retry_count) = self.send_with_retries(rb).await;
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             {
                 let elapsed_ms = start.elapsed().as_millis() as f64;
@@ -318,6 +360,7 @@ pub mod oai {
                             path,
                             status = %resp.status(),
                             elapsed_ms = elapsed_ms as u64,
+                            flowgrid.retry_count = retry_count,
                             "response",
                         );
                     }
@@ -328,6 +371,7 @@ pub mod oai {
                             method = method.as_str(),
                             path,
                             elapsed_ms = elapsed_ms as u64,
+                            flowgrid.retry_count = retry_count,
                             "request_failed",
                         );
                     }
@@ -339,11 +383,12 @@ pub mod oai {
                     method.as_str(),
                     path,
                     result.as_ref().ok().map(|r| r.status()),
+                    retry_count,
                 );
             }
             #[cfg(not(any(feature = "tracing", feature = "opentelemetry")))]
             {
-                let _ = (method.as_str(), path);
+                let _ = (method.as_str(), path, retry_count);
             }
             result
         }
@@ -803,23 +848,29 @@ pub mod clu {
                 .map_err(|e| crate::internal::error::clu::Error::Config(e.to_string()))
         }
 
-        async fn send_with_retries(&self, rb: RequestBuilder) -> Result<Response> {
+        async fn send_with_retries(&self, rb: RequestBuilder) -> (Result<Response>, u32) {
             let max = self.config.max_retries as usize;
             let mut attempt = 0usize;
             let mut rb = rb;
             let cap = self.config.retry_after_max;
+            let mut retries = 0u32;
             loop {
                 let clone = rb.try_clone().ok_or_else(|| {
                     crate::internal::error::clu::Error::Config(
                         "request could not be cloned for retries".to_string(),
                     )
-                })?;
+                });
+                let clone = match clone {
+                    Ok(c) => c,
+                    Err(e) => return (Err(e), retries),
+                };
                 match rb.send().await {
                     Ok(resp) => {
                         let status = resp.status();
                         if attempt < max && retry_status(status) {
                             let headers = resp.headers().clone();
                             drop(resp);
+                            retries += 1;
                             let delay =
                                 sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
                             sleep(delay).await;
@@ -827,16 +878,17 @@ pub mod clu {
                             attempt += 1;
                             continue;
                         }
-                        return Ok(resp);
+                        return (Ok(resp), retries);
                     }
                     Err(e) => {
                         if attempt < max && retry_error(&e) {
+                            retries += 1;
                             sleep(backoff((attempt + 1) as u32).min(cap)).await;
                             rb = clone;
                             attempt += 1;
                             continue;
                         }
-                        return Err(e.into());
+                        return (Err(e.into()), retries);
                     }
                 }
             }
@@ -858,14 +910,49 @@ pub mod clu {
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
-            tracing::debug!(
-                target: "flowgrid_http",
-                provider = "anthropic",
-                method = method.as_str(),
-                path,
-                "request",
-            );
-            let result = self.send_with_retries(rb).await;
+            let (result, retry_count) = {
+                use tracing::Instrument;
+                let method_for_span = method.clone();
+                let span = tracing::info_span!(
+                    "flowgrid.http.request",
+                    flowgrid.provider = "anthropic",
+                    http.request.method = %method_for_span.as_str(),
+                    flowgrid.api.path = path,
+                    flowgrid.retry_count = tracing::field::Empty,
+                    flowgrid.request_id = tracing::field::Empty,
+                    flowgrid.ratelimit.requests.remaining = tracing::field::Empty,
+                    flowgrid.ratelimit.requests.reset = tracing::field::Empty,
+                );
+                let span_record = span.clone();
+                async move {
+                    tracing::debug!(
+                        target: "flowgrid_http",
+                        provider = "anthropic",
+                        method = method_for_span.as_str(),
+                        path,
+                        "request",
+                    );
+                    let (result, retry_count) = self.send_with_retries(rb).await;
+                    span_record.record("flowgrid.retry_count", retry_count);
+                    if let Ok(ref resp) = result {
+                        let meta = response_meta(resp);
+                        if let Some(ref id) = meta.request_id {
+                            span_record.record("flowgrid.request_id", id.as_str());
+                        }
+                        if let Some(ref v) = meta.rate_limit_remaining_requests {
+                            span_record.record("flowgrid.ratelimit.requests.remaining", v.as_str());
+                        }
+                        if let Some(ref v) = meta.rate_limit_reset_requests {
+                            span_record.record("flowgrid.ratelimit.requests.reset", v.as_str());
+                        }
+                    }
+                    (result, retry_count)
+                }
+                .instrument(span)
+                .await
+            };
+            #[cfg(not(feature = "tracing"))]
+            let (result, retry_count) = self.send_with_retries(rb).await;
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             {
                 let elapsed_ms = start.elapsed().as_millis() as f64;
@@ -879,6 +966,7 @@ pub mod clu {
                             path,
                             status = %resp.status(),
                             elapsed_ms = elapsed_ms as u64,
+                            flowgrid.retry_count = retry_count,
                             "response",
                         );
                     }
@@ -889,6 +977,7 @@ pub mod clu {
                             method = method.as_str(),
                             path,
                             elapsed_ms = elapsed_ms as u64,
+                            flowgrid.retry_count = retry_count,
                             "request_failed",
                         );
                     }
@@ -900,11 +989,12 @@ pub mod clu {
                     method.as_str(),
                     path,
                     result.as_ref().ok().map(|r| r.status()),
+                    retry_count,
                 );
             }
             #[cfg(not(any(feature = "tracing", feature = "opentelemetry")))]
             {
-                let _ = (method.as_str(), path);
+                let _ = (method.as_str(), path, retry_count);
             }
             result
         }

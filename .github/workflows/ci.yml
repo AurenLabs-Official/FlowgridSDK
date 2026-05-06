@@ -28,6 +28,30 @@ jobs:
       - name: check (OpenTelemetry metrics feature)
         run: cargo check -p flowgrid --no-default-features --features "openai,anthropic,tls-rustls,opentelemetry"
 
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: contract tests only
+        run: cargo test -p flowgrid --features full contract_
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: cargo deny
+        run: cargo deny check
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit
+
   msrv:
     runs-on: ubuntu-latest
     steps:
@@ -47,7 +71,7 @@ jobs:
       - name: Install cargo-semver-checks
         run: cargo +stable install cargo-semver-checks --locked
       - name: Generate current rustdoc JSON (full features, single TLS)
-        run: cd crates/flowgrid && cargo +nightly rustdoc --features full -Z unstable-options -- -Z unstable-options --output-format json
+        run: cargo +nightly rustdoc -p flowgrid --features full -Z unstable-options -- -Z unstable-options --output-format json
       - name: Semver checks (committed baseline)
         run: cargo +stable semver-checks check-release -p flowgrid --baseline-rustdoc crates/flowgrid/semver/baseline_rustdoc.json --current-rustdoc target/doc/flowgrid.json
 
@@ -70,6 +94,7 @@ jobs:
           - --no-default-features --features openai,tls-rustls,stream-types
           - --no-default-features --features anthropic,tls-rustls,stream-types
           - --no-default-features --features openai,anthropic,tls-native,stream-types
+          - --no-default-features --features openai,tls-rustls,cancel
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

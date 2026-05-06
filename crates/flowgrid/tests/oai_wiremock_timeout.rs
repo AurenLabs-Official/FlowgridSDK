@@ -1,6 +1,10 @@
 #![cfg(feature = "openai")]
 
-use flowgrid::{ExecuteOptions, OpenAiClientConfig, OpenAiError, OpenAiHttpTransport};
+use flowgrid::{ExecuteOptions, OpenAiClientConfig, OpenAiHttpTransport};
+#[cfg(feature = "anthropic")]
+use flowgrid::OpenAiError;
+#[cfg(not(feature = "anthropic"))]
+use flowgrid::Error as OpenAiError;
 use std::time::Duration;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -35,7 +39,6 @@ async fn per_call_timeout_fires_before_slow_response() {
     let t = OpenAiHttpTransport::new(config).unwrap();
     let opts = ExecuteOptions {
         timeout: Some(Duration::from_millis(200)),
-        ..Default::default()
     };
     let err = t
         .get_json_with_options::<serde_json::Value>("models", opts)
