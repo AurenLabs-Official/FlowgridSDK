@@ -11,7 +11,12 @@ mod sse;
 mod stream_types;
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 mod stream_typing;
+#[cfg(all(feature = "anthropic", feature = "stream-types"))]
+mod stream_typing_clu;
 mod transport;
+
+#[cfg(feature = "opentelemetry")]
+mod otel_http;
 
 #[cfg(feature = "openai")]
 mod pagination;

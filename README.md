@@ -8,7 +8,7 @@ Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubus
 
 ## Cookbook
 
-Examples assume **default features** (`openai` + `anthropic`). With both enabled, use prefixed error types such as [`OpenAiError`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiError.html) / [`AnthropicError`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicError.html).
+Examples assume **default features** (`openai` + `anthropic` + `tls-rustls`). With both enabled, use prefixed error types such as [`OpenAiError`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiError.html) / [`AnthropicError`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicError.html).
 
 ### OpenAI chat (non-streaming)
 
@@ -78,6 +78,19 @@ async fn example() -> Result<(), flowgrid::AnthropicError> {
 }
 ```
 
+## TLS
+
+Defaults use **`tls-rustls`** (`reqwest` + Rustls). For system / corporate certificate stores, disable default features and enable **`tls-native`** instead. **Do not** enable both `tls-rustls` and `tls-native` (the crate will fail to compile). Disabling all default features without one of these TLS features also fails if `openai` or `anthropic` is enabled.
+
+## Examples
+
+From the repo root (requires API keys in the environment):
+
+```bash
+OPENAI_API_KEY=sk-... cargo run -p flowgrid --example openai_chat_stream --features openai
+ANTHROPIC_API_KEY=sk-ant-... cargo run -p flowgrid --example anthropic_message --features anthropic
+```
+
 ## MSRV
 
 Rust **1.75** (see [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml)).
@@ -86,8 +99,8 @@ Rust **1.75** (see [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml)).
 
 ```toml
 flowgrid = { path = "crates/flowgrid" }
-# or only one provider:
-flowgrid = { path = "crates/flowgrid", default-features = false, features = ["openai"] }
+# or only one provider (enable exactly one TLS backend, e.g. `tls-rustls`):
+flowgrid = { path = "crates/flowgrid", default-features = false, features = ["openai", "tls-rustls"] }
 ```
 
 ### Both providers enabled (default)
@@ -113,19 +126,27 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 
 ## Build features
 
-- **`openai`** / **`anthropic`**: compile the corresponding client.
+- **`openai`** / **`anthropic`**: compile the corresponding client (defaults include both plus **`tls-rustls`**).
+- **`tls-rustls`** / **`tls-native`**: HTTPS backend for `reqwest` (exactly one required when a provider is enabled).
 - OpenAI extras: `files`, `images`, `audio`, `moderations`, `batches`, `fine_tuning`, `evals`, `assistants`, `vector_stores`, `containers`, `admin`, `webhooks`, `azure`, `realtime`, `tracing`.
 - Anthropic extras: `batches`, `models`, `beta` (also gated by `anthropic`).
-- **`stream-types`**: optional typed parsing helpers for OpenAI streaming SSE payloads (requires `openai`).
-- **`full`**: enables all optional areas above.
+- **`stream-types`**: optional typed parsing for streaming `data:` JSON (OpenAI chat chunks when `openai` is on; Anthropic message stream events when `anthropic` is on).
+- **`opentelemetry`**: records `flowgrid.http.request.duration_ms` via the OpenTelemetry metrics API (install a meter provider in your app).
+- **`full`**: enables all optional areas above **except** TLS switching and **except** `opentelemetry` (enable `opentelemetry` explicitly when needed).
 
 Shared feature name **`batches`** turns on batch APIs for whichever provider(s) you have enabled.
+
+## Request hook
+
+`ClientBuilder`, `AnthropicBuilder`, and `AzureClientBuilder` support **`request_pre_send_hook`**: a closure `Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder` run after default headers are applied and immediately before the request is sent. Use it for extra headers (for example correlation IDs). Do not log secrets there.
 
 ## Tests
 
 ```bash
-cargo test -p flowgrid --all-features
+cargo test -p flowgrid --features full
 ```
+
+`cargo test -p flowgrid --all-features` is **not** supported because it would enable both TLS stacks. CI uses the `full` feature set instead.
 
 Ignored live tests: set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` as appropriate and run with `--ignored`.
 

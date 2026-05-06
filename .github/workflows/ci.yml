@@ -20,9 +20,13 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --all-features -- -D warnings
+        run: cargo clippy -p flowgrid --features full -- -D warnings
       - name: test
-        run: cargo test --workspace --all-features
+        run: cargo test -p flowgrid --features full
+      - name: check examples
+        run: cargo check -p flowgrid --examples --features full
+      - name: check (OpenTelemetry metrics feature)
+        run: cargo check -p flowgrid --no-default-features --features "openai,anthropic,tls-rustls,opentelemetry"
 
   msrv:
     runs-on: ubuntu-latest
@@ -31,7 +35,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.75
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (MSRV)
-        run: cargo check -p flowgrid --all-features
+        run: cargo check -p flowgrid --features full
+
+  semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-semver-checks
+        run: cargo install cargo-semver-checks --locked
+      - name: Semver checks (vs crates.io if published)
+        id: crates_io
+        run: cargo semver-checks check-release -p flowgrid
+        continue-on-error: true
+      - name: Semver checks (git baseline)
+        if: steps.crates_io.outcome == 'failure'
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then BASE_SHA="HEAD~1"; fi
+          cargo semver-checks check-release -p flowgrid --baseline-rev "$BASE_SHA" --release-type minor
 
   feature-matrix:
     runs-on: ubuntu-latest
@@ -39,15 +64,17 @@ jobs:
       fail-fast: false
       matrix:
         features:
-          - --no-default-features --features openai
-          - --no-default-features --features anthropic
-          - --no-default-features --features openai,files
-          - --no-default-features --features openai,webhooks
-          - --no-default-features --features openai,azure
-          - --no-default-features --features openai,realtime
-          - --no-default-features --features anthropic,batches
-          - --no-default-features --features anthropic,beta
-          - --no-default-features --features openai,stream-types
+          - --no-default-features --features openai,tls-rustls
+          - --no-default-features --features anthropic,tls-rustls
+          - --no-default-features --features openai,tls-rustls,files
+          - --no-default-features --features openai,tls-rustls,webhooks
+          - --no-default-features --features openai,tls-rustls,azure
+          - --no-default-features --features openai,tls-rustls,realtime
+          - --no-default-features --features anthropic,tls-rustls,batches
+          - --no-default-features --features anthropic,tls-rustls,beta
+          - --no-default-features --features openai,tls-rustls,stream-types
+          - --no-default-features --features anthropic,tls-rustls,stream-types
+          - --no-default-features --features openai,anthropic,tls-native,stream-types
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

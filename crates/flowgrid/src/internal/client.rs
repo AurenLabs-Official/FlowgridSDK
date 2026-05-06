@@ -28,6 +28,7 @@ pub mod oai {
     #[cfg(feature = "vector_stores")]
     use crate::internal::resources::VectorStoresClient;
     use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta};
+    use std::sync::Arc;
     use std::time::Duration;
 
     /// Pair of decoded body and response metadata (`withResponse()` in Node).
@@ -174,6 +175,11 @@ pub mod oai {
         timeout: Option<Duration>,
         max_retries: Option<u32>,
         user_agent_suffix: Option<String>,
+        request_hook: Option<
+            std::sync::Arc<
+                dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync,
+            >,
+        >,
         #[cfg(feature = "webhooks")]
         webhook_secret: Option<String>,
     }
@@ -188,6 +194,10 @@ pub mod oai {
             d.field("timeout", &self.timeout);
             d.field("max_retries", &self.max_retries);
             d.field("user_agent_suffix", &self.user_agent_suffix);
+            d.field(
+                "request_pre_send_hook",
+                &self.request_hook.as_ref().map(|_| "..."),
+            );
             #[cfg(feature = "webhooks")]
             d.field(
                 "webhook_secret",
@@ -198,6 +208,11 @@ pub mod oai {
     }
 
     impl ClientBuilder {
+        /// Empty builder (same as [`Default::default`]).
+        pub fn new() -> Self {
+            Self::default()
+        }
+
         /// Populate defaults from environment.
         pub fn from_env() -> Result<Self> {
             let c = ClientConfig::from_env()?;
@@ -209,6 +224,7 @@ pub mod oai {
                 timeout: Some(c.timeout),
                 max_retries: Some(c.max_retries),
                 user_agent_suffix: c.user_agent_suffix,
+                request_hook: None,
                 #[cfg(feature = "webhooks")]
                 webhook_secret: c.webhook_secret,
             })
@@ -256,6 +272,17 @@ pub mod oai {
             self
         }
 
+        /// Hook that runs after default headers are applied and **immediately before** the HTTP
+        /// request is sent. Use for extra headers (e.g. correlation IDs). Never log API keys or
+        /// request bodies here.
+        pub fn request_pre_send_hook<F>(mut self, hook: F) -> Self
+        where
+            F: Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync + 'static,
+        {
+            self.request_hook = Some(Arc::new(hook));
+            self
+        }
+
         /// Default webhook signing secret (feature `webhooks`).
         #[cfg(feature = "webhooks")]
         pub fn webhook_secret(mut self, secret: impl Into<String>) -> Self {
@@ -282,6 +309,7 @@ pub mod oai {
                 timeout: self.timeout.unwrap_or_else(|| Duration::from_secs(120)),
                 max_retries: self.max_retries.unwrap_or(2),
                 user_agent_suffix: self.user_agent_suffix,
+                request_hook: self.request_hook,
                 #[cfg(feature = "webhooks")]
                 webhook_secret: self.webhook_secret,
             };
@@ -295,6 +323,7 @@ pub mod oai {
 pub mod clu {
     use crate::internal::error::clu::{Error, Result};
     use crate::internal::transport::clu::{ClientConfig, HttpTransport, ResponseMeta};
+    use std::sync::Arc;
     use std::time::Duration;
 
     /// Response body plus HTTP metadata.
@@ -356,6 +385,8 @@ pub mod clu {
         timeout: Option<Duration>,
         max_retries: Option<u32>,
         user_agent_suffix: Option<String>,
+        request_hook:
+            Option<Arc<dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync>>,
     }
 
     impl std::fmt::Debug for AnthropicBuilder {
@@ -368,11 +399,20 @@ pub mod clu {
                 .field("timeout", &self.timeout)
                 .field("max_retries", &self.max_retries)
                 .field("user_agent_suffix", &self.user_agent_suffix)
+                .field(
+                    "request_pre_send_hook",
+                    &self.request_hook.as_ref().map(|_| "..."),
+                )
                 .finish()
         }
     }
 
     impl AnthropicBuilder {
+        /// Empty builder (same as [`Default::default`]).
+        pub fn new() -> Self {
+            Self::default()
+        }
+
         pub fn from_env() -> Result<Self> {
             let c = ClientConfig::from_env()?;
             Ok(Self {
@@ -383,6 +423,7 @@ pub mod clu {
                 timeout: Some(c.timeout),
                 max_retries: Some(c.max_retries),
                 user_agent_suffix: c.user_agent_suffix,
+                request_hook: None,
             })
         }
 
@@ -421,6 +462,16 @@ pub mod clu {
             self
         }
 
+        /// Hook that runs after default Anthropic headers are applied and **immediately before**
+        /// the HTTP request is sent. Do not log API keys or bodies here.
+        pub fn request_pre_send_hook<F>(mut self, hook: F) -> Self
+        where
+            F: Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync + 'static,
+        {
+            self.request_hook = Some(Arc::new(hook));
+            self
+        }
+
         pub fn build(self) -> Result<Anthropic> {
             let api_key = self
                 .api_key
@@ -438,6 +489,7 @@ pub mod clu {
                 timeout: self.timeout.unwrap_or_else(|| Duration::from_secs(120)),
                 max_retries: self.max_retries.unwrap_or(2),
                 user_agent_suffix: self.user_agent_suffix,
+                request_hook: self.request_hook,
             };
             Ok(Anthropic {
                 transport: HttpTransport::new(config)?,

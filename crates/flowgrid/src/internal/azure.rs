@@ -8,6 +8,7 @@
 use crate::internal::client::oai::OpenAI;
 use crate::internal::error::oai::{Error, Result};
 use crate::internal::transport::oai::{ClientConfig, HttpTransport};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Builder for Azure OpenAI (`AzureOpenAI` in Node).
@@ -18,6 +19,8 @@ pub struct AzureClientBuilder {
     api_version: Option<String>,
     timeout: Option<Duration>,
     max_retries: Option<u32>,
+    request_hook:
+        Option<Arc<dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync>>,
 }
 
 impl std::fmt::Debug for AzureClientBuilder {
@@ -28,6 +31,10 @@ impl std::fmt::Debug for AzureClientBuilder {
             .field("api_version", &self.api_version)
             .field("timeout", &self.timeout)
             .field("max_retries", &self.max_retries)
+            .field(
+                "request_pre_send_hook",
+                &self.request_hook.as_ref().map(|_| "..."),
+            )
             .finish()
     }
 }
@@ -69,6 +76,15 @@ impl AzureClientBuilder {
         self
     }
 
+    /// Same as [`crate::internal::client::oai::ClientBuilder::request_pre_send_hook`].
+    pub fn request_pre_send_hook<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync + 'static,
+    {
+        self.request_hook = Some(Arc::new(hook));
+        self
+    }
+
     /// Build a normal [`OpenAI`] client configured for Azure HTTP semantics.
     pub fn build(self) -> Result<OpenAI> {
         let api_key = self
@@ -92,6 +108,7 @@ impl AzureClientBuilder {
             timeout: self.timeout.unwrap_or_else(|| Duration::from_secs(120)),
             max_retries: self.max_retries.unwrap_or(2),
             user_agent_suffix: Some("azure-openai".to_string()),
+            request_hook: self.request_hook,
             #[cfg(feature = "webhooks")]
             webhook_secret: None,
         };

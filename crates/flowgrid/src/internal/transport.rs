@@ -33,6 +33,8 @@ pub mod oai {
         pub max_retries: u32,
         /// Custom `User-Agent` prefix appended to the default.
         pub user_agent_suffix: Option<String>,
+        /// Optional hook after default headers, immediately before send.
+        pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
         /// Default webhook secret (feature `webhooks`).
         #[cfg(feature = "webhooks")]
         pub webhook_secret: Option<String>,
@@ -59,6 +61,7 @@ pub mod oai {
                 default_query: Vec::new(),
                 #[cfg(feature = "webhooks")]
                 webhook_secret: std::env::var("OPENAI_WEBHOOK_SECRET").ok(),
+                request_hook: None,
             })
         }
     }
@@ -75,6 +78,7 @@ pub mod oai {
             d.field("timeout", &self.timeout);
             d.field("max_retries", &self.max_retries);
             d.field("user_agent_suffix", &self.user_agent_suffix);
+            d.field("request_hook", &self.request_hook.as_ref().map(|_| "..."));
             #[cfg(feature = "webhooks")]
             d.field(
                 "webhook_secret",
@@ -196,6 +200,13 @@ pub mod oai {
             Ok(u)
         }
 
+        fn apply_request_hook(&self, rb: RequestBuilder) -> RequestBuilder {
+            match &self.config.request_hook {
+                Some(h) => h(rb),
+                None => rb,
+            }
+        }
+
         async fn send_with_retries(&self, rb: RequestBuilder) -> Result<Response> {
             let max = self.config.max_retries as usize;
             let mut attempt = 0usize;
@@ -237,22 +248,31 @@ pub mod oai {
             method: Method,
             path: &str,
         ) -> Result<Response> {
+            let rb = self.apply_request_hook(rb);
+            #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
+            let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
+            tracing::debug!(
+                target: "flowgrid_http",
+                provider = "openai",
+                method = method.as_str(),
+                path,
+                "request",
+            );
+            let result = self.send_with_retries(rb).await;
+            #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             {
-                use std::time::Instant;
-                let start = Instant::now();
-                let m = method.as_str();
-                tracing::debug!(target: "flowgrid_http", provider = "openai", method = m, path, "request");
-                let result = self.send_with_retries(rb).await;
+                let elapsed_ms = start.elapsed().as_millis() as f64;
+                #[cfg(feature = "tracing")]
                 match &result {
                     Ok(resp) => {
                         tracing::debug!(
                             target: "flowgrid_http",
                             provider = "openai",
-                            method = m,
+                            method = method.as_str(),
                             path,
                             status = %resp.status(),
-                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            elapsed_ms = elapsed_ms as u64,
                             "response",
                         );
                     }
@@ -260,19 +280,27 @@ pub mod oai {
                         tracing::debug!(
                             target: "flowgrid_http",
                             provider = "openai",
-                            method = m,
+                            method = method.as_str(),
                             path,
-                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            elapsed_ms = elapsed_ms as u64,
                             "request_failed",
                         );
                     }
                 }
-                result
+                #[cfg(feature = "opentelemetry")]
+                crate::internal::otel_http::record_duration_ms(
+                    elapsed_ms,
+                    "openai",
+                    method.as_str(),
+                    path,
+                    result.as_ref().ok().map(|r| r.status()),
+                );
             }
-            #[cfg(not(feature = "tracing"))]
+            #[cfg(not(any(feature = "tracing", feature = "opentelemetry")))]
             {
-                self.send_with_retries(rb).await
+                let _ = (method.as_str(), path);
             }
+            result
         }
 
         fn api_error_from_text(status: StatusCode, text: &str, headers: HeaderMap) -> ApiError {
@@ -492,6 +520,7 @@ pub mod clu {
         pub timeout: Duration,
         pub max_retries: u32,
         pub user_agent_suffix: Option<String>,
+        pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
     }
 
     impl ClientConfig {
@@ -513,6 +542,7 @@ pub mod clu {
                 timeout: Duration::from_secs(120),
                 max_retries: 2,
                 user_agent_suffix: None,
+                request_hook: None,
             })
         }
     }
@@ -527,6 +557,7 @@ pub mod clu {
                 .field("timeout", &self.timeout)
                 .field("max_retries", &self.max_retries)
                 .field("user_agent_suffix", &self.user_agent_suffix)
+                .field("request_hook", &self.request_hook.as_ref().map(|_| "..."))
                 .finish()
         }
     }
@@ -585,6 +616,13 @@ pub mod clu {
                 inner,
                 config: Arc::new(config),
             })
+        }
+
+        fn apply_request_hook(&self, rb: RequestBuilder) -> RequestBuilder {
+            match &self.config.request_hook {
+                Some(h) => h(rb),
+                None => rb,
+            }
         }
 
         fn user_agent(&self) -> HeaderValue {
@@ -667,22 +705,31 @@ pub mod clu {
             method: Method,
             path: &str,
         ) -> Result<Response> {
+            let rb = self.apply_request_hook(rb);
+            #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
+            let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
+            tracing::debug!(
+                target: "flowgrid_http",
+                provider = "anthropic",
+                method = method.as_str(),
+                path,
+                "request",
+            );
+            let result = self.send_with_retries(rb).await;
+            #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             {
-                use std::time::Instant;
-                let start = Instant::now();
-                let m = method.as_str();
-                tracing::debug!(target: "flowgrid_http", provider = "anthropic", method = m, path, "request");
-                let result = self.send_with_retries(rb).await;
+                let elapsed_ms = start.elapsed().as_millis() as f64;
+                #[cfg(feature = "tracing")]
                 match &result {
                     Ok(resp) => {
                         tracing::debug!(
                             target: "flowgrid_http",
                             provider = "anthropic",
-                            method = m,
+                            method = method.as_str(),
                             path,
                             status = %resp.status(),
-                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            elapsed_ms = elapsed_ms as u64,
                             "response",
                         );
                     }
@@ -690,19 +737,27 @@ pub mod clu {
                         tracing::debug!(
                             target: "flowgrid_http",
                             provider = "anthropic",
-                            method = m,
+                            method = method.as_str(),
                             path,
-                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            elapsed_ms = elapsed_ms as u64,
                             "request_failed",
                         );
                     }
                 }
-                result
+                #[cfg(feature = "opentelemetry")]
+                crate::internal::otel_http::record_duration_ms(
+                    elapsed_ms,
+                    "anthropic",
+                    method.as_str(),
+                    path,
+                    result.as_ref().ok().map(|r| r.status()),
+                );
             }
-            #[cfg(not(feature = "tracing"))]
+            #[cfg(not(any(feature = "tracing", feature = "opentelemetry")))]
             {
-                self.send_with_retries(rb).await
+                let _ = (method.as_str(), path);
             }
+            result
         }
 
         fn api_error_from_text(status: StatusCode, text: &str, headers: HeaderMap) -> ApiError {

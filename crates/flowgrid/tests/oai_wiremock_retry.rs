@@ -44,6 +44,7 @@ async fn retries_on_429_then_succeeds() {
         timeout: std::time::Duration::from_secs(5),
         max_retries: 2,
         user_agent_suffix: None,
+        request_hook: None,
         #[cfg(feature = "webhooks")]
         webhook_secret: None,
     };

@@ -17,6 +17,16 @@
 #![allow(missing_docs)]
 #![allow(clippy::result_large_err)]
 
+#[cfg(all(feature = "tls-rustls", feature = "tls-native"))]
+compile_error!("flowgrid: enable at most one of `tls-rustls` or `tls-native`");
+
+#[cfg(all(
+    any(feature = "openai", feature = "anthropic"),
+    not(feature = "tls-rustls"),
+    not(feature = "tls-native"),
+))]
+compile_error!("flowgrid: enable `tls-rustls` (default) or `tls-native` for HTTPS");
+
 mod internal;
 
 // ---- OpenAI + Anthropic both: prefixed collisions ----
@@ -85,6 +95,12 @@ pub use internal::oai::{ClientBuilder, OpenAI};
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 pub use internal::oai::{
     parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,
+};
+
+#[cfg(all(feature = "anthropic", feature = "stream-types"))]
+pub use internal::clu::{
+    parse_anthropic_message_stream_json, AnthropicContentBlockDeltaEvent, AnthropicStreamLine,
+    AnthropicTextDelta,
 };
 
 #[cfg(feature = "openai")]

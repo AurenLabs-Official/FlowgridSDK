@@ -1,7 +1,8 @@
 //! Optional typed parsing for OpenAI chat completion **streaming** JSON lines (`data:` payloads).
+//! For Anthropic messages streaming, see `stream_typing_clu` (features **`anthropic`** +
+//! **`stream-types`**).
 //!
-//! Requires Cargo features **`openai`** and **`stream-types`**. Complements raw `SseEvent.data`
-//! strings from the OpenAI SSE decoder.
+//! Requires Cargo features **`openai`** and **`stream-types`**.
 
 use serde::Deserialize;
 

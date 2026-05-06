@@ -16,7 +16,7 @@ name = "flowgrid"
 path = "src/lib.rs"
 
 [features]
-default = ["openai", "anthropic"]
+default = ["openai", "anthropic", "tls-rustls"]
 full = [
     "stream-types",
     "files",
@@ -35,9 +35,14 @@ full = [
     "realtime",
     "models",
     "beta",
+    "tracing",
 ]
+# Exactly one TLS backend must be enabled (`tls-rustls` is on by default).
+tls-rustls = ["reqwest/rustls-tls"]
+tls-native = ["reqwest/native-tls"]
 tracing = ["dep:tracing"]
-# Optional typed helpers for OpenAI streaming SSE `data:` JSON (requires `openai`).
+opentelemetry = ["dep:opentelemetry"]
+# Typed SSE `data:` JSON helpers (provider-specific feature also required).
 stream-types = []
 openai = []
 anthropic = []
@@ -66,7 +71,6 @@ reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "multipart",
     "stream",
-    "rustls-tls",
 ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -75,6 +79,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util
 tokio-util = { version = "0.7", features = ["io"] }
 url = "2"
 tracing = { version = "0.1", optional = true }
+opentelemetry = { version = "0.27", optional = true }
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
@@ -88,3 +93,11 @@ tokio-tungstenite = { version = "0.24", optional = true, features = [
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6"
 serde_json = "1"
+
+[[example]]
+name = "openai_chat_stream"
+required-features = ["openai"]
+
+[[example]]
+name = "anthropic_message"
+required-features = ["anthropic"]
