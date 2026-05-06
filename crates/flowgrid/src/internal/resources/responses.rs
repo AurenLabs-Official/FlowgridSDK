@@ -36,8 +36,7 @@ impl<'a> ResponsesClient<'a> {
     /// `data: [DONE]` line and other events—parse [`sse::oai::SseEvent::data`](crate::internal::sse::oai::SseEvent)
     /// defensively or stop when you see `[DONE]`.
     ///
-    /// For a [`futures::Stream`] of events, call [`SseStream::into_event_stream`](crate::internal::sse::oai::SseStream::into_event_stream)
-    /// on the returned decoder.
+    /// For a [`futures::Stream`] of events without `pin_mut`, call [`SseStream::into_unpin_event_stream`](crate::internal::sse::oai::SseStream::into_unpin_event_stream).
     pub async fn create_stream(
         &self,
         body: &CreateResponseRequest,

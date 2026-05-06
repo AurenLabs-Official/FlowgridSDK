@@ -34,6 +34,8 @@ pub use crate::internal::error::oai::{
 pub use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta};
 pub use pagination::ListPage;
 
+pub use crate::internal::sse::oai::{OpenAiSseEventStream, SseEvent, SseStream};
+
 #[cfg(feature = "stream-types")]
 pub use crate::internal::stream_typing::{
     parse_openai_chat_stream_json, OpenAiChatChunkChoice, OpenAiChatCompletionChunk,

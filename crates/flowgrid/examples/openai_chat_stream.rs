@@ -3,7 +3,6 @@
 //! Run: `OPENAI_API_KEY=sk-... cargo run -p flowgrid --example openai_chat_stream --features openai`
 
 use flowgrid::{ClientBuilder, CreateChatCompletionRequest, OpenAI};
-use futures::pin_mut;
 use futures::StreamExt;
 
 #[tokio::main]
@@ -18,8 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         extra: Default::default(),
     };
     let (sse, _meta) = client.chat().completions().create_stream(&req).await?;
-    let events = sse.into_event_stream();
-    pin_mut!(events);
+    let mut events = sse.into_unpin_event_stream();
     while let Some(item) = events.next().await {
         let ev = item?;
         if ev.data.trim() == "[DONE]" {

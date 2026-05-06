@@ -10,12 +10,15 @@
 //! [`Result`] refer to that provider.
 //!
 //! **Streaming:** chat completions, Responses API, and Anthropic messages support SSE via
-//! `create_stream` on the respective clients. Decoders expose `next_event` and
-//! `into_event_stream` for manual loops vs. `futures::StreamExt`. OpenAI may send a final
-//! `data: [DONE]` line; parse event payloads defensively.
+//! `create_stream` on the respective clients. Decoders expose `next_event`,
+//! `into_unpin_event_stream` (for `StreamExt::next` without `pin_mut`), and `into_event_stream`.
+//! OpenAI may send a final `data: [DONE]` line; parse event payloads defensively.
 
 #![allow(missing_docs)]
 #![allow(clippy::result_large_err)]
+
+pub use internal::error::ProviderKind;
+pub use internal::execute_options::ExecuteOptions;
 
 #[cfg(all(feature = "tls-rustls", feature = "tls-native"))]
 compile_error!("flowgrid: enable at most one of `tls-rustls` or `tls-native`");
@@ -91,6 +94,15 @@ pub use internal::clu::{
 
 #[cfg(feature = "openai")]
 pub use internal::oai::{ClientBuilder, OpenAI};
+
+#[cfg(feature = "openai")]
+pub use internal::oai::{OpenAiSseEventStream, SseEvent, SseStream};
+
+#[cfg(all(feature = "openai", feature = "anthropic"))]
+pub use internal::clu::{AnthropicSseEventStream, SseStream as AnthropicSseStream};
+
+#[cfg(all(feature = "anthropic", not(feature = "openai")))]
+pub use internal::clu::{AnthropicSseEventStream, SseEvent, SseStream};
 
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 pub use internal::oai::{

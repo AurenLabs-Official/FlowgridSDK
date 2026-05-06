@@ -3,12 +3,13 @@
 use flowgrid::AnthropicClientConfig;
 use flowgrid::AnthropicHttpTransport;
 use flowgrid::Message;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[tokio::test]
-async fn retries_on_429_then_succeeds_messages() {
+async fn retry_after_large_value_is_capped_messages() {
     use serde_json::json;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -23,6 +24,7 @@ async fn retries_on_429_then_succeeds_messages() {
             let n = calls_cb.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
                 ResponseTemplate::new(429)
+                    .insert_header("retry-after", "600")
                     .set_body_string(r#"{"type":"error","error":{"message":"rate limit"}}"#)
             } else {
                 ResponseTemplate::new(200).set_body_json(json!({
@@ -45,16 +47,22 @@ async fn retries_on_429_then_succeeds_messages() {
         base_url: base,
         anthropic_version: "2023-06-01".into(),
         anthropic_beta: None,
-        timeout: std::time::Duration::from_secs(5),
+        timeout: Duration::from_secs(30),
         max_retries: 2,
         user_agent_suffix: None,
         request_hook: None,
-        retry_after_max: std::time::Duration::from_millis(2000),
+        retry_after_max: Duration::from_millis(400),
     };
     let t = AnthropicHttpTransport::new(config).unwrap();
     let body =
         json!({"model":"claude","max_tokens":10,"messages":[{"role":"user","content":"hi"}]});
+    let t0 = Instant::now();
     let (_msg, meta): (Message, _) = t.post_json("messages", &body).await.unwrap();
     assert!(meta.status.is_success());
     assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "expected capped retry sleep (~400ms), got {elapsed:?}"
+    );
 }

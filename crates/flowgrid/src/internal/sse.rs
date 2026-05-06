@@ -91,6 +91,8 @@ pub(crate) mod common {
 pub mod oai {
     use bytes::Bytes;
     use futures::Stream;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
 
     pub use super::common::SseEvent;
 
@@ -99,6 +101,20 @@ pub mod oai {
     /// Incremental SSE decoder over a chunked byte stream.
     pub struct SseStream<S> {
         inner: super::common::SseStream<S>,
+    }
+
+    /// [`futures::Stream`] of [`SseEvent`] that is [`Unpin`], so [`futures::StreamExt::next`]
+    /// works without [`futures::pin_mut`]. Prefer over [`SseStream::into_event_stream`] for that reason.
+    pub struct OpenAiSseEventStream {
+        inner: Pin<Box<dyn Stream<Item = Result<SseEvent>> + Send>>,
+    }
+
+    impl Stream for OpenAiSseEventStream {
+        type Item = Result<SseEvent>;
+
+        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            self.inner.as_mut().poll_next(cx)
+        }
     }
 
     impl<S> SseStream<S>
@@ -122,8 +138,9 @@ pub mod oai {
 
         /// Turn this decoder into a [`futures::Stream`] of events (same errors as [`next_event`]).
         ///
-        /// Prefer this when using `StreamExt::next()` / stream combinators instead of a manual loop.
-        pub fn into_event_stream(self) -> impl futures::Stream<Item = Result<SseEvent>> + Send
+        /// The returned stream is **not** [`Unpin`]; use [`into_unpin_event_stream`] with
+        /// [`futures::StreamExt::next`].
+        pub fn into_event_stream(self) -> impl Stream<Item = Result<SseEvent>> + Send
         where
             S: Send + 'static,
         {
@@ -135,6 +152,17 @@ pub mod oai {
                 }
             })
         }
+
+        /// Same semantics as [`into_event_stream`], but the result is [`Unpin`] for ergonomic use with
+        /// [`futures::StreamExt::next`].
+        pub fn into_unpin_event_stream(self) -> OpenAiSseEventStream
+        where
+            S: Send + 'static,
+        {
+            OpenAiSseEventStream {
+                inner: Box::pin(self.into_event_stream()),
+            }
+        }
     }
 }
 
@@ -142,6 +170,8 @@ pub mod oai {
 pub mod clu {
     use bytes::Bytes;
     use futures::Stream;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
 
     pub use super::common::SseEvent;
 
@@ -149,6 +179,19 @@ pub mod clu {
 
     pub struct SseStream<S> {
         inner: super::common::SseStream<S>,
+    }
+
+    /// [`Unpin`] stream of SSE events for use with [`futures::StreamExt::next`] without `pin_mut`.
+    pub struct AnthropicSseEventStream {
+        inner: Pin<Box<dyn Stream<Item = Result<SseEvent>> + Send>>,
+    }
+
+    impl Stream for AnthropicSseEventStream {
+        type Item = Result<SseEvent>;
+
+        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            self.inner.as_mut().poll_next(cx)
+        }
     }
 
     impl<S> SseStream<S>
@@ -168,10 +211,11 @@ pub mod clu {
                 .map_err(|e| crate::internal::error::clu::Error::Sse(e.to_string()))
         }
 
-        /// Turn this decoder into a [`futures::Stream`] of events (same errors as [`next_event`]).
-        ///
         /// Semantics match the OpenAI helper of the same name when both providers are enabled.
-        pub fn into_event_stream(self) -> impl futures::Stream<Item = Result<SseEvent>> + Send
+        ///
+        /// The returned stream is **not** [`Unpin`]; use [`into_unpin_event_stream`] with
+        /// [`futures::StreamExt::next`].
+        pub fn into_event_stream(self) -> impl Stream<Item = Result<SseEvent>> + Send
         where
             S: Send + 'static,
         {
@@ -182,6 +226,15 @@ pub mod clu {
                     Err(e) => Err(e),
                 }
             })
+        }
+
+        pub fn into_unpin_event_stream(self) -> AnthropicSseEventStream
+        where
+            S: Send + 'static,
+        {
+            AnthropicSseEventStream {
+                inner: Box::pin(self.into_event_stream()),
+            }
         }
     }
 }
@@ -222,5 +275,19 @@ mod sse_tests {
         let ev = dec.read_next_event().await.unwrap().unwrap();
         assert_eq!(ev.event, "x");
         assert_eq!(ev.data, "line1\nline2");
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn openai_unpin_event_stream_marker() {
+        fn assert_unpin<T: std::marker::Unpin>() {}
+        assert_unpin::<super::oai::OpenAiSseEventStream>();
+    }
+
+    #[cfg(feature = "anthropic")]
+    #[test]
+    fn anthropic_unpin_event_stream_marker() {
+        fn assert_unpin<T: std::marker::Unpin>() {}
+        assert_unpin::<super::clu::AnthropicSseEventStream>();
     }
 }

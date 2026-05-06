@@ -5,8 +5,10 @@
 //! `crate::internal::pagination` directly, except inside barrel files like `oai.rs`.
 
 mod client;
-mod error;
+pub mod error;
+pub mod execute_options;
 pub mod resources;
+mod retry_policy;
 mod sse;
 mod stream_types;
 #[cfg(all(feature = "openai", feature = "stream-types"))]

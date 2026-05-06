@@ -1,5 +1,6 @@
 use crate::internal::client::clu::{Anthropic, WithResponse};
 use crate::internal::error::clu::Result;
+use crate::internal::execute_options::ExecuteOptions;
 use crate::internal::sse::clu::SseStream;
 
 pub use crate::internal::stream_types::BoxedByteStream;
@@ -16,7 +17,20 @@ impl<'a> MessagesClient<'a> {
 
     /// `POST /messages`
     pub async fn create(&self, body: &CreateMessageRequest) -> Result<Message> {
-        let (v, _) = self.inner.transport.post_json("messages", body).await?;
+        self.create_with_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    pub async fn create_with_options(
+        &self,
+        body: &CreateMessageRequest,
+        opts: ExecuteOptions,
+    ) -> Result<Message> {
+        let (v, _) = self
+            .inner
+            .transport
+            .post_json_with_options("messages", body, opts)
+            .await?;
         Ok(v)
     }
 
@@ -24,18 +38,43 @@ impl<'a> MessagesClient<'a> {
         &self,
         body: &CreateMessageRequest,
     ) -> Result<WithResponse<Message>> {
-        let (data, meta) = self.inner.transport.post_json("messages", body).await?;
+        self.create_with_response_and_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    pub async fn create_with_response_and_options(
+        &self,
+        body: &CreateMessageRequest,
+        opts: ExecuteOptions,
+    ) -> Result<WithResponse<Message>> {
+        let (data, meta) = self
+            .inner
+            .transport
+            .post_json_with_options("messages", body, opts)
+            .await?;
         Ok(WithResponse { data, meta })
     }
 
     /// Streaming message (`stream: true`); yields SSE events.
     ///
     /// Requires [`CreateMessageRequest::stream`] `== Some(true)`. Use
-    /// [`SseStream::into_event_stream`](crate::internal::sse::clu::SseStream::into_event_stream)
-    /// for a [`futures::Stream`] of [`SseEvent`](crate::internal::sse::clu::SseEvent) values.
+    /// [`SseStream::into_unpin_event_stream`](crate::internal::sse::clu::SseStream::into_unpin_event_stream)
+    /// for a [`futures::Stream`] of [`SseEvent`](crate::internal::sse::clu::SseEvent) without `pin_mut`.
     pub async fn create_stream(
         &self,
         body: &CreateMessageRequest,
+    ) -> Result<(
+        SseStream<BoxedByteStream>,
+        crate::internal::transport::clu::ResponseMeta,
+    )> {
+        self.create_stream_with_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    pub async fn create_stream_with_options(
+        &self,
+        body: &CreateMessageRequest,
+        opts: ExecuteOptions,
     ) -> Result<(
         SseStream<BoxedByteStream>,
         crate::internal::transport::clu::ResponseMeta,
@@ -49,7 +88,7 @@ impl<'a> MessagesClient<'a> {
         let (stream, meta) = self
             .inner
             .transport
-            .post_stream_bytes("messages", body)
+            .post_stream_bytes_with_options("messages", body, opts)
             .await?;
         Ok((SseStream::new(Box::pin(stream)), meta))
     }

@@ -206,6 +206,7 @@ dependencies = [
  "hex",
  "hmac",
  "http",
+ "httpdate",
  "mime",
  "opentelemetry",
  "reqwest",

@@ -17,6 +17,10 @@ path = "src/lib.rs"
 
 [features]
 default = ["openai", "anthropic", "tls-rustls"]
+# Same as `default`; use `default-features = false` and `--features minimal` in docs/CI.
+minimal = ["openai", "anthropic", "tls-rustls"]
+# Observability bundle; pair with `full` when you also need uploads, webhooks, etc.
+enterprise = ["tracing", "opentelemetry"]
 full = [
     "stream-types",
     "files",
@@ -66,6 +70,7 @@ beta = []
 [dependencies]
 bytes = "1"
 futures = "0.3"
+httpdate = "1"
 mime = "0.3"
 reqwest = { version = "0.12", default-features = false, features = [
     "json",

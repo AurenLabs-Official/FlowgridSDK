@@ -1,6 +1,21 @@
 #[cfg(feature = "openai")]
 pub mod oai {
+    //! HTTP transport for OpenAI-compatible APIs.
+    //!
+    //! ## Retries
+    //!
+    //! Failed **responses** are retried when the status is retryable and `max_retries` has not been
+    //! exhausted: **408**, **409**, **429**, and **5xx** (including **503**). Other **4xx** are not
+    //! retried. Connection/timeout/request errors from the HTTP stack may also be retried.
+    //! Retries use exponential backoff (50 ms × 2ⁿ, capped at **2 s**) unless the response includes
+    //! [`Retry-After`](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after), which is
+    //! parsed as delta-seconds or HTTP-date and **capped** by [`ClientConfig::retry_after_max`]
+    //! (default **2 s**). **`POST` / `PATCH` / `DELETE`** can be retried on transient failures—only
+    //! enable high `max_retries` when duplicate side effects are acceptable.
     use crate::internal::error::oai::{ApiError, ErrorObject, Result};
+    use crate::internal::error::ProviderKind;
+    use crate::internal::execute_options::ExecuteOptions;
+    use crate::internal::retry_policy::{body_snippet, parse_retry_after, sleep_before_retry};
     use bytes::Bytes;
     use futures::Stream;
     use futures::TryStreamExt;
@@ -38,6 +53,8 @@ pub mod oai {
         /// Default webhook secret (feature `webhooks`).
         #[cfg(feature = "webhooks")]
         pub webhook_secret: Option<String>,
+        /// Ceiling for delays taken from `Retry-After` while retrying (default 2 s).
+        pub retry_after_max: Duration,
     }
 
     impl ClientConfig {
@@ -62,6 +79,7 @@ pub mod oai {
                 #[cfg(feature = "webhooks")]
                 webhook_secret: std::env::var("OPENAI_WEBHOOK_SECRET").ok(),
                 request_hook: None,
+                retry_after_max: Duration::from_millis(2000),
             })
         }
     }
@@ -84,6 +102,7 @@ pub mod oai {
                 "webhook_secret",
                 &self.webhook_secret.as_ref().map(|_| "***"),
             );
+            d.field("retry_after_max", &self.retry_after_max);
             d.finish()
         }
     }
@@ -97,18 +116,34 @@ pub mod oai {
         pub status: StatusCode,
         /// Full header map.
         pub headers: HeaderMap,
+        /// Parsed `Retry-After` when present (uncommon on success).
+        pub retry_after: Option<Duration>,
+        /// `x-ratelimit-remaining-requests` when present.
+        pub rate_limit_remaining_requests: Option<String>,
+        /// `x-ratelimit-reset-requests` when present.
+        pub rate_limit_reset_requests: Option<String>,
+    }
+
+    fn header_one(headers: &HeaderMap, name: &'static str) -> Option<String> {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
     }
 
     fn response_meta(resp: &Response) -> ResponseMeta {
         let headers = resp.headers().clone();
-        let request_id = headers
-            .get("x-request-id")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+        let request_id = header_one(&headers, "x-request-id");
+        let retry_after = parse_retry_after(&headers);
+        let rate_limit_remaining_requests = header_one(&headers, "x-ratelimit-remaining-requests");
+        let rate_limit_reset_requests = header_one(&headers, "x-ratelimit-reset-requests");
         ResponseMeta {
             request_id,
             status: resp.status(),
             headers,
+            retry_after,
+            rate_limit_remaining_requests,
+            rate_limit_reset_requests,
         }
     }
 
@@ -211,6 +246,7 @@ pub mod oai {
             let max = self.config.max_retries as usize;
             let mut attempt = 0usize;
             let mut rb = rb;
+            let cap = self.config.retry_after_max;
             loop {
                 let clone = rb.try_clone().ok_or_else(|| {
                     crate::internal::error::oai::Error::Config(
@@ -221,8 +257,11 @@ pub mod oai {
                     Ok(resp) => {
                         let status = resp.status();
                         if attempt < max && retry_status(status) {
+                            let headers = resp.headers().clone();
                             drop(resp);
-                            sleep(backoff((attempt + 1) as u32)).await;
+                            let delay =
+                                sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
+                            sleep(delay).await;
                             rb = clone;
                             attempt += 1;
                             continue;
@@ -231,7 +270,7 @@ pub mod oai {
                     }
                     Err(e) => {
                         if attempt < max && retry_error(&e) {
-                            sleep(backoff((attempt + 1) as u32)).await;
+                            sleep(backoff((attempt + 1) as u32).min(cap)).await;
                             rb = clone;
                             attempt += 1;
                             continue;
@@ -247,8 +286,14 @@ pub mod oai {
             rb: RequestBuilder,
             method: Method,
             path: &str,
+            exec: &ExecuteOptions,
         ) -> Result<Response> {
             let rb = self.apply_request_hook(rb);
+            let rb = if let Some(d) = exec.timeout {
+                rb.timeout(d)
+            } else {
+                rb
+            };
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
@@ -309,10 +354,14 @@ pub mod oai {
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
             let body: Option<ErrorObject> = serde_json::from_str(text).ok();
+            let retry_after = parse_retry_after(&headers);
             ApiError {
                 status,
                 body,
                 raw_body: Some(text.to_string()),
+                body_snippet: body_snippet(text),
+                retry_after,
+                provider: ProviderKind::OpenAi,
                 request_id,
                 headers,
             }
@@ -324,6 +373,7 @@ pub mod oai {
             method: Method,
             path: &str,
             body: Option<&B>,
+            exec: ExecuteOptions,
         ) -> Result<(T, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.inner.request(method.clone(), url.as_str());
@@ -334,7 +384,7 @@ pub mod oai {
                     .json(b),
                 None => self.apply_default_headers(rb),
             };
-            let resp = self.send_traced(rb, method, path).await?;
+            let resp = self.send_traced(rb, method, path, &exec).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -351,7 +401,22 @@ pub mod oai {
             &self,
             path: &str,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json::<serde_json::Value, T>(Method::GET, path, None)
+            self.request_json::<serde_json::Value, T>(
+                Method::GET,
+                path,
+                None,
+                ExecuteOptions::default(),
+            )
+            .await
+        }
+
+        /// GET JSON with per-call options (e.g. [`ExecuteOptions::timeout`](ExecuteOptions::timeout)).
+        pub async fn get_json_with_options<T: serde::de::DeserializeOwned>(
+            &self,
+            path: &str,
+            exec: ExecuteOptions,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json::<serde_json::Value, T>(Method::GET, path, None, exec)
                 .await
         }
 
@@ -359,7 +424,9 @@ pub mod oai {
         pub async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.apply_default_headers(self.inner.get(url.as_str()));
-            let resp = self.send_traced(rb, Method::GET, path).await?;
+            let resp = self
+                .send_traced(rb, Method::GET, path, &ExecuteOptions::default())
+                .await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -376,8 +443,13 @@ pub mod oai {
             &self,
             path: &str,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json::<serde_json::Value, T>(Method::DELETE, path, None)
-                .await
+            self.request_json::<serde_json::Value, T>(
+                Method::DELETE,
+                path,
+                None,
+                ExecuteOptions::default(),
+            )
+            .await
         }
 
         /// POST JSON.
@@ -386,7 +458,22 @@ pub mod oai {
             path: &str,
             body: &B,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json(Method::POST, path, Some(body)).await
+            self.request_json(Method::POST, path, Some(body), ExecuteOptions::default())
+                .await
+        }
+
+        /// POST JSON with per-call options.
+        pub async fn post_json_with_options<
+            B: Serialize + ?Sized,
+            T: serde::de::DeserializeOwned,
+        >(
+            &self,
+            path: &str,
+            body: &B,
+            exec: ExecuteOptions,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json(Method::POST, path, Some(body), exec)
+                .await
         }
 
         /// POST JSON returning raw bytes (e.g. `audio/speech`).
@@ -400,7 +487,9 @@ pub mod oai {
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_traced(rb, Method::POST, path).await?;
+            let resp = self
+                .send_traced(rb, Method::POST, path, &ExecuteOptions::default())
+                .await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -418,7 +507,8 @@ pub mod oai {
             path: &str,
             body: &B,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json(Method::PATCH, path, Some(body)).await
+            self.request_json(Method::PATCH, path, Some(body), ExecuteOptions::default())
+                .await
         }
 
         /// POST JSON returning a byte stream (SSE or binary).
@@ -430,12 +520,26 @@ pub mod oai {
             impl Stream<Item = std::result::Result<Bytes, io::Error>> + Send,
             ResponseMeta,
         )> {
+            self.post_stream_bytes_with_options(path, body, ExecuteOptions::default())
+                .await
+        }
+
+        /// [`Self::post_stream_bytes`] with per-call options.
+        pub async fn post_stream_bytes_with_options<B: Serialize + ?Sized>(
+            &self,
+            path: &str,
+            body: &B,
+            exec: ExecuteOptions,
+        ) -> Result<(
+            impl Stream<Item = std::result::Result<Bytes, io::Error>> + Send,
+            ResponseMeta,
+        )> {
             let url = self.url(path)?;
             let rb = self
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_traced(rb, Method::POST, path).await?;
+            let resp = self.send_traced(rb, Method::POST, path, &exec).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             if !status.is_success() {
@@ -457,7 +561,9 @@ pub mod oai {
             let rb = self
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .multipart(form);
-            let resp = self.send_traced(rb, Method::POST, path).await?;
+            let resp = self
+                .send_traced(rb, Method::POST, path, &ExecuteOptions::default())
+                .await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -479,7 +585,9 @@ pub mod oai {
             let rb = self
                 .apply_default_headers(self.inner.request(Method::POST, url.as_str()))
                 .multipart(form);
-            let resp = self.send_traced(rb, Method::POST, path).await?;
+            let resp = self
+                .send_traced(rb, Method::POST, path, &ExecuteOptions::default())
+                .await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -495,7 +603,18 @@ pub mod oai {
 
 #[cfg(feature = "anthropic")]
 pub mod clu {
+    //! HTTP transport for Anthropic APIs.
+    //!
+    //! ## Retries
+    //!
+    //! Retries **408**, **409**, **429**, **529**, and **5xx** when attempts remain, plus transient
+    //! connection errors. Uses exponential backoff (50 ms × 2ⁿ, cap **2 s**) unless `Retry-After` is
+    //! set (delta-seconds or HTTP-date), capped by [`ClientConfig::retry_after_max`]. **`POST`**
+    //! may retry—tune `max_retries` if duplicate side effects are unacceptable.
     use crate::internal::error::clu::{ApiError, ErrorBody, Result};
+    use crate::internal::error::ProviderKind;
+    use crate::internal::execute_options::ExecuteOptions;
+    use crate::internal::retry_policy::{body_snippet, parse_retry_after, sleep_before_retry};
     use bytes::Bytes;
     use futures::{Stream, TryStreamExt};
     use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
@@ -521,6 +640,8 @@ pub mod clu {
         pub max_retries: u32,
         pub user_agent_suffix: Option<String>,
         pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
+        /// Ceiling for delays taken from `Retry-After` while retrying (default 2 s).
+        pub retry_after_max: Duration,
     }
 
     impl ClientConfig {
@@ -543,6 +664,7 @@ pub mod clu {
                 max_retries: 2,
                 user_agent_suffix: None,
                 request_hook: None,
+                retry_after_max: Duration::from_millis(2000),
             })
         }
     }
@@ -558,6 +680,7 @@ pub mod clu {
                 .field("max_retries", &self.max_retries)
                 .field("user_agent_suffix", &self.user_agent_suffix)
                 .field("request_hook", &self.request_hook.as_ref().map(|_| "..."))
+                .field("retry_after_max", &self.retry_after_max)
                 .finish()
         }
     }
@@ -567,19 +690,35 @@ pub mod clu {
         pub request_id: Option<String>,
         pub status: StatusCode,
         pub headers: HeaderMap,
+        pub retry_after: Option<Duration>,
+        /// `anthropic-ratelimit-requests-remaining` when present.
+        pub rate_limit_remaining_requests: Option<String>,
+        /// `anthropic-ratelimit-requests-reset` when present.
+        pub rate_limit_reset_requests: Option<String>,
+    }
+
+    fn header_one(headers: &HeaderMap, name: &'static str) -> Option<String> {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
     }
 
     fn response_meta(resp: &Response) -> ResponseMeta {
         let headers = resp.headers().clone();
-        let request_id = headers
-            .get("request-id")
-            .or_else(|| headers.get("x-request-id"))
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+        let request_id =
+            header_one(&headers, "request-id").or_else(|| header_one(&headers, "x-request-id"));
+        let retry_after = parse_retry_after(&headers);
+        let rate_limit_remaining_requests =
+            header_one(&headers, "anthropic-ratelimit-requests-remaining");
+        let rate_limit_reset_requests = header_one(&headers, "anthropic-ratelimit-requests-reset");
         ResponseMeta {
             request_id,
             status: resp.status(),
             headers,
+            retry_after,
+            rate_limit_remaining_requests,
+            rate_limit_reset_requests,
         }
     }
 
@@ -668,6 +807,7 @@ pub mod clu {
             let max = self.config.max_retries as usize;
             let mut attempt = 0usize;
             let mut rb = rb;
+            let cap = self.config.retry_after_max;
             loop {
                 let clone = rb.try_clone().ok_or_else(|| {
                     crate::internal::error::clu::Error::Config(
@@ -678,8 +818,11 @@ pub mod clu {
                     Ok(resp) => {
                         let status = resp.status();
                         if attempt < max && retry_status(status) {
+                            let headers = resp.headers().clone();
                             drop(resp);
-                            sleep(backoff((attempt + 1) as u32)).await;
+                            let delay =
+                                sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
+                            sleep(delay).await;
                             rb = clone;
                             attempt += 1;
                             continue;
@@ -688,7 +831,7 @@ pub mod clu {
                     }
                     Err(e) => {
                         if attempt < max && retry_error(&e) {
-                            sleep(backoff((attempt + 1) as u32)).await;
+                            sleep(backoff((attempt + 1) as u32).min(cap)).await;
                             rb = clone;
                             attempt += 1;
                             continue;
@@ -704,8 +847,14 @@ pub mod clu {
             rb: RequestBuilder,
             method: Method,
             path: &str,
+            exec: &ExecuteOptions,
         ) -> Result<Response> {
             let rb = self.apply_request_hook(rb);
+            let rb = if let Some(d) = exec.timeout {
+                rb.timeout(d)
+            } else {
+                rb
+            };
             #[cfg(any(feature = "tracing", feature = "opentelemetry"))]
             let start = std::time::Instant::now();
             #[cfg(feature = "tracing")]
@@ -767,10 +916,14 @@ pub mod clu {
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
             let body: Option<ErrorBody> = serde_json::from_str(text).ok();
+            let retry_after = parse_retry_after(&headers);
             ApiError {
                 status,
                 body,
                 raw_body: Some(text.to_string()),
+                body_snippet: body_snippet(text),
+                retry_after,
+                provider: ProviderKind::Anthropic,
                 request_id,
                 headers,
             }
@@ -782,6 +935,7 @@ pub mod clu {
             path: &str,
             body: Option<&B>,
             accept: &str,
+            exec: ExecuteOptions,
         ) -> Result<(T, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.inner.request(method.clone(), url.as_str());
@@ -792,7 +946,7 @@ pub mod clu {
                     .json(b),
                 None => self.apply_default_headers(rb, accept),
             };
-            let resp = self.send_traced(rb, method, path).await?;
+            let resp = self.send_traced(rb, method, path, &exec).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();
@@ -808,8 +962,29 @@ pub mod clu {
             &self,
             path: &str,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json::<serde_json::Value, T>(Method::GET, path, None, "application/json")
-                .await
+            self.request_json::<serde_json::Value, T>(
+                Method::GET,
+                path,
+                None,
+                "application/json",
+                ExecuteOptions::default(),
+            )
+            .await
+        }
+
+        pub async fn get_json_with_options<T: serde::de::DeserializeOwned>(
+            &self,
+            path: &str,
+            exec: ExecuteOptions,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json::<serde_json::Value, T>(
+                Method::GET,
+                path,
+                None,
+                "application/json",
+                exec,
+            )
+            .await
         }
 
         pub async fn delete_json<T: serde::de::DeserializeOwned>(
@@ -821,6 +996,7 @@ pub mod clu {
                 path,
                 None,
                 "application/json",
+                ExecuteOptions::default(),
             )
             .await
         }
@@ -830,7 +1006,26 @@ pub mod clu {
             path: &str,
             body: &B,
         ) -> Result<(T, ResponseMeta)> {
-            self.request_json(Method::POST, path, Some(body), "application/json")
+            self.request_json(
+                Method::POST,
+                path,
+                Some(body),
+                "application/json",
+                ExecuteOptions::default(),
+            )
+            .await
+        }
+
+        pub async fn post_json_with_options<
+            B: Serialize + ?Sized,
+            T: serde::de::DeserializeOwned,
+        >(
+            &self,
+            path: &str,
+            body: &B,
+            exec: ExecuteOptions,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json(Method::POST, path, Some(body), "application/json", exec)
                 .await
         }
 
@@ -838,6 +1033,19 @@ pub mod clu {
             &self,
             path: &str,
             body: &B,
+        ) -> Result<(
+            impl Stream<Item = std::result::Result<Bytes, io::Error>> + Send,
+            ResponseMeta,
+        )> {
+            self.post_stream_bytes_with_options(path, body, ExecuteOptions::default())
+                .await
+        }
+
+        pub async fn post_stream_bytes_with_options<B: Serialize + ?Sized>(
+            &self,
+            path: &str,
+            body: &B,
+            exec: ExecuteOptions,
         ) -> Result<(
             impl Stream<Item = std::result::Result<Bytes, io::Error>> + Send,
             ResponseMeta,
@@ -850,7 +1058,7 @@ pub mod clu {
                 )
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
                 .json(body);
-            let resp = self.send_traced(rb, Method::POST, path).await?;
+            let resp = self.send_traced(rb, Method::POST, path, &exec).await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             if !status.is_success() {
@@ -865,7 +1073,9 @@ pub mod clu {
         pub async fn get_bytes(&self, path: &str) -> Result<(Vec<u8>, ResponseMeta)> {
             let url = self.url(path)?;
             let rb = self.apply_default_headers(self.inner.get(url.as_str()), "*/*");
-            let resp = self.send_traced(rb, Method::GET, path).await?;
+            let resp = self
+                .send_traced(rb, Method::GET, path, &ExecuteOptions::default())
+                .await?;
             let meta = response_meta(&resp);
             let status = resp.status();
             let headers = meta.headers.clone();

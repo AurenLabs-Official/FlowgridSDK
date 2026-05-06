@@ -1,3 +1,12 @@
+/// Identifies which provider emitted an error or HTTP metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProviderKind {
+    /// OpenAI HTTP API (including Azure-style configuration).
+    OpenAi,
+    /// Anthropic Claude HTTP API.
+    Anthropic,
+}
+
 #[cfg(feature = "openai")]
 pub mod oai {
     use reqwest::header::HeaderMap;
@@ -5,10 +14,13 @@ pub mod oai {
     use serde::Deserialize;
     use thiserror::Error;
 
+    use super::ProviderKind;
+
     /// Crate-wide result alias.
     pub type Result<T> = std::result::Result<T, Error>;
 
     /// Top-level error type (transport, HTTP, JSON, etc.).
+    #[allow(clippy::large_enum_variant)]
     #[derive(Debug, Error)]
     pub enum Error {
         /// HTTP layer or non-success response from the API.
@@ -47,19 +59,40 @@ pub mod oai {
     }
 
     /// Structured API error from OpenAI responses (4xx/5xx with body).
-    /// `Display` truncates raw body text to 512 characters if no structured body is present.
-    #[derive(Debug, Clone)]
+    /// `Display` avoids logging full bodies; see [`ApiError::body_snippet`].
+    #[derive(Clone)]
     pub struct ApiError {
         /// HTTP status.
         pub status: StatusCode,
         /// Parsed error payload when present.
         pub body: Option<ErrorObject>,
-        /// Raw response body string (truncated in Display).
+        /// Raw response body (may be large; avoid logging).
         pub raw_body: Option<String>,
+        /// First ~512 characters of the body for safe diagnostics.
+        pub body_snippet: Option<String>,
+        /// Parsed `Retry-After` when the server sent one.
+        pub retry_after: Option<std::time::Duration>,
+        /// Originating provider.
+        pub provider: ProviderKind,
         /// `x-request-id` when present.
         pub request_id: Option<String>,
         /// Response headers.
         pub headers: HeaderMap,
+    }
+
+    impl std::fmt::Debug for ApiError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("ApiError")
+                .field("status", &self.status)
+                .field("provider", &self.provider)
+                .field("retry_after", &self.retry_after)
+                .field("request_id", &self.request_id)
+                .field("body", &self.body)
+                .field("body_snippet", &self.body_snippet)
+                .field("raw_body_len", &self.raw_body.as_ref().map(String::len))
+                .field("header_len", &self.headers.len())
+                .finish()
+        }
     }
 
     impl std::fmt::Display for ApiError {
@@ -70,6 +103,8 @@ pub mod oai {
             }
             if let Some(ref o) = self.body {
                 write!(f, ": {o:?}")?;
+            } else if let Some(ref s) = self.body_snippet {
+                write!(f, ": {s}")?;
             } else if let Some(ref raw) = self.raw_body {
                 let snippet: String = raw.chars().take(512).collect();
                 write!(f, ": {snippet}")?;
@@ -147,10 +182,13 @@ pub mod clu {
     use serde::Deserialize;
     use thiserror::Error;
 
+    use super::ProviderKind;
+
     /// Crate-wide result alias.
     pub type Result<T> = std::result::Result<T, Error>;
 
     /// Top-level error type.
+    #[allow(clippy::large_enum_variant)]
     #[derive(Debug, Error)]
     pub enum Error {
         /// HTTP or API error response.
@@ -174,16 +212,38 @@ pub mod clu {
     }
 
     /// Structured API error (Anthropic JSON).
-    /// `Display` truncates raw body text to 512 characters when no structured body is present.
-    #[derive(Debug, Clone)]
+    /// `Display` avoids logging full bodies; see [`ApiError::body_snippet`].
+    #[derive(Clone)]
     pub struct ApiError {
         /// HTTP status.
         pub status: StatusCode,
         /// Parsed body when recognizable.
         pub body: Option<ErrorBody>,
+        /// Raw response body (may be large; avoid logging).
         pub raw_body: Option<String>,
+        /// First ~512 characters of the body for safe diagnostics.
+        pub body_snippet: Option<String>,
+        /// Parsed `Retry-After` when the server sent one.
+        pub retry_after: Option<std::time::Duration>,
+        /// Originating provider.
+        pub provider: ProviderKind,
         pub request_id: Option<String>,
         pub headers: HeaderMap,
+    }
+
+    impl std::fmt::Debug for ApiError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("ApiError")
+                .field("status", &self.status)
+                .field("provider", &self.provider)
+                .field("retry_after", &self.retry_after)
+                .field("request_id", &self.request_id)
+                .field("body", &self.body)
+                .field("body_snippet", &self.body_snippet)
+                .field("raw_body_len", &self.raw_body.as_ref().map(String::len))
+                .field("header_len", &self.headers.len())
+                .finish()
+        }
     }
 
     impl std::fmt::Display for ApiError {
@@ -194,6 +254,8 @@ pub mod clu {
             }
             if let Some(ref b) = self.body {
                 write!(f, ": {b:?}")?;
+            } else if let Some(ref s) = self.body_snippet {
+                write!(f, ": {s}")?;
             } else if let Some(ref raw) = self.raw_body {
                 let snippet: String = raw.chars().take(512).collect();
                 write!(f, ": {snippet}")?;

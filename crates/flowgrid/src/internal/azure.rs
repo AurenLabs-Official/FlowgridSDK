@@ -111,6 +111,7 @@ impl AzureClientBuilder {
             request_hook: self.request_hook,
             #[cfg(feature = "webhooks")]
             webhook_secret: None,
+            retry_after_max: Duration::from_millis(2000),
         };
         let transport = HttpTransport::new(config)?;
         Ok(OpenAI { transport })

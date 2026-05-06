@@ -1,5 +1,6 @@
 use crate::internal::client::oai::{OpenAI, WithResponse};
 use crate::internal::error::oai::Result;
+use crate::internal::execute_options::ExecuteOptions;
 use crate::internal::oai::pagination::ListPage;
 use crate::internal::sse::oai::SseStream;
 use crate::internal::stream_types::BoxedByteStream;
@@ -32,10 +33,20 @@ pub struct ChatCompletionsClient<'a> {
 impl<'a> ChatCompletionsClient<'a> {
     /// `POST /chat/completions`
     pub async fn create(&self, body: &CreateChatCompletionRequest) -> Result<ChatCompletion> {
+        self.create_with_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    /// `POST /chat/completions` with per-call execution options (e.g. timeout override).
+    pub async fn create_with_options(
+        &self,
+        body: &CreateChatCompletionRequest,
+        opts: ExecuteOptions,
+    ) -> Result<ChatCompletion> {
         let (v, _) = self
             .inner
             .transport
-            .post_json("chat/completions", body)
+            .post_json_with_options("chat/completions", body, opts)
             .await?;
         Ok(v)
     }
@@ -45,10 +56,19 @@ impl<'a> ChatCompletionsClient<'a> {
         &self,
         body: &CreateChatCompletionRequest,
     ) -> Result<WithResponse<ChatCompletion>> {
+        self.create_with_response_and_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    pub async fn create_with_response_and_options(
+        &self,
+        body: &CreateChatCompletionRequest,
+        opts: ExecuteOptions,
+    ) -> Result<WithResponse<ChatCompletion>> {
         let (data, meta) = self
             .inner
             .transport
-            .post_json("chat/completions", body)
+            .post_json_with_options("chat/completions", body, opts)
             .await?;
         Ok(WithResponse { data, meta })
     }
@@ -58,10 +78,22 @@ impl<'a> ChatCompletionsClient<'a> {
     /// You must set [`CreateChatCompletionRequest::stream`] to `Some(true)`. The API often ends
     /// with a `data: [DONE]` event—treat non-JSON payloads accordingly.
     ///
-    /// For a [`futures::Stream`] over events, use [`SseStream::into_event_stream`](crate::internal::sse::oai::SseStream::into_event_stream).
+    /// For a [`futures::Stream`] over events without `pin_mut`, use [`SseStream::into_unpin_event_stream`](crate::internal::sse::oai::SseStream::into_unpin_event_stream).
     pub async fn create_stream(
         &self,
         body: &CreateChatCompletionRequest,
+    ) -> Result<(
+        SseStream<BoxedByteStream>,
+        crate::internal::transport::oai::ResponseMeta,
+    )> {
+        self.create_stream_with_options(body, ExecuteOptions::default())
+            .await
+    }
+
+    pub async fn create_stream_with_options(
+        &self,
+        body: &CreateChatCompletionRequest,
+        opts: ExecuteOptions,
     ) -> Result<(
         SseStream<BoxedByteStream>,
         crate::internal::transport::oai::ResponseMeta,
@@ -75,7 +107,7 @@ impl<'a> ChatCompletionsClient<'a> {
         let (stream, meta) = self
             .inner
             .transport
-            .post_stream_bytes("chat/completions", body)
+            .post_stream_bytes_with_options("chat/completions", body, opts)
             .await?;
         Ok((SseStream::new(Box::pin(stream)), meta))
     }

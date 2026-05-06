@@ -312,6 +312,7 @@ pub mod oai {
                 request_hook: self.request_hook,
                 #[cfg(feature = "webhooks")]
                 webhook_secret: self.webhook_secret,
+                retry_after_max: Duration::from_millis(2000),
             };
             let transport = HttpTransport::new(config)?;
             Ok(OpenAI { transport })
@@ -490,6 +491,7 @@ pub mod clu {
                 max_retries: self.max_retries.unwrap_or(2),
                 user_agent_suffix: self.user_agent_suffix,
                 request_hook: self.request_hook,
+                retry_after_max: Duration::from_millis(2000),
             };
             Ok(Anthropic {
                 transport: HttpTransport::new(config)?,

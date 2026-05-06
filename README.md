@@ -31,7 +31,7 @@ async fn example() -> Result<(), flowgrid::OpenAiError> {
 
 ### OpenAI chat (SSE streaming)
 
-Use [`into_event_stream`](https://docs.rs/flowgrid/latest/flowgrid/) on the decoder from `create_stream`, then [`StreamExt::next`](https://docs.rs/futures/latest/futures/stream/trait.StreamExt.html). OpenAI may send `data: [DONE]`; treat non-JSON lines defensively.
+Use [`into_unpin_event_stream`](https://docs.rs/flowgrid/latest/flowgrid/) on the decoder from `create_stream`, then [`StreamExt::next`](https://docs.rs/futures/latest/futures/stream/trait.StreamExt.html) without `pin_mut`. (`into_event_stream` remains for advanced use.) OpenAI may send `data: [DONE]`; treat non-JSON lines defensively.
 
 ```rust,ignore
 use flowgrid::{ClientBuilder, CreateChatCompletionRequest};
@@ -46,7 +46,7 @@ async fn example() -> Result<(), flowgrid::OpenAiError> {
         extra: Default::default(),
     };
     let (sse, _meta) = client.chat().completions().create_stream(&req).await?;
-    let mut events = sse.into_event_stream();
+    let mut events = sse.into_unpin_event_stream();
     while let Some(item) = events.next().await {
         let ev = item?;
         if ev.data.trim() == "[DONE]" {
@@ -126,8 +126,8 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 
 ## Build features
 
-- **`openai`** / **`anthropic`**: compile the corresponding client (defaults include both plus **`tls-rustls`**).
-- **`tls-rustls`** / **`tls-native`**: HTTPS backend for `reqwest` (exactly one required when a provider is enabled).
+- **`minimal`**: same as the default feature set (`openai`, `anthropic`, `tls-rustls`); useful with `default-features = false`.
+- **`enterprise`**: enables `tracing` and `opentelemetry` together; combine with `full` if you need every OpenAI/Anthropic submodule as well.
 - OpenAI extras: `files`, `images`, `audio`, `moderations`, `batches`, `fine_tuning`, `evals`, `assistants`, `vector_stores`, `containers`, `admin`, `webhooks`, `azure`, `realtime`, `tracing`.
 - Anthropic extras: `batches`, `models`, `beta` (also gated by `anthropic`).
 - **`stream-types`**: optional typed parsing for streaming `data:` JSON (OpenAI chat chunks when `openai` is on; Anthropic message stream events when `anthropic` is on).
@@ -150,6 +150,24 @@ cargo test -p flowgrid --features full
 
 Ignored live tests: set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` as appropriate and run with `--ignored`.
 
-## License
+## Retries, `Retry-After`, and headers
+
+The HTTP transports retry transient failures up to `max_retries` (see module docs on [`HttpTransport`](https://docs.rs/flowgrid/latest/flowgrid/)). Response statuses **408**, **409**, **429**, and **5xx** are retried (Anthropic also treats **529** as retryable). Other **4xx** are surfaced as [`OpenAiApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.OpenAiApiError.html) / [`AnthropicApiError`](https://docs.rs/flowgrid/latest/flowgrid/struct.AnthropicApiError.html) without retry. When the server sends **`Retry-After`** (seconds or HTTP-date), the wait honors it but is **capped** by `retry_after_max` on [`OpenAiClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiClientConfig.html) / [`AnthropicClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicClientConfig.html) (default **2 s**, aligned with the exponential backoff ceiling). Parsed values appear on errors as `retry_after` / `body_snippet` / `provider` ([`ProviderKind`](https://docs.rs/flowgrid/latest/flowgrid/enum.ProviderKind.html)).
+
+Successful [`OpenAiResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiResponseMeta.html) / [`AnthropicResponseMeta`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicResponseMeta.html) optionally echo `retry_after` and common rate-limit headers when the API sends them (`x-ratelimit-*` on OpenAI, `anthropic-ratelimit-*` on Anthropic).
+
+## Per-call timeouts
+
+[`ExecuteOptions`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) overrides the HTTP timeout for a single request (including streaming entrypoints) without building a new client. Chat and Messages expose `create_with_options`, `create_stream_with_options`, and `create_with_response_and_options`. Lower layers also provide `get_json_with_options` / `post_json_with_options` on the transports. For cancellation beyond timeouts, you can still wrap futures with `tokio::time::timeout` or your runtime’s equivalents.
+
+## Contract fixtures
+
+Versioned JSON under [`crates/flowgrid/tests/fixtures/contracts/`](crates/flowgrid/tests/fixtures/contracts/) guards deserialization of public response types (`ChatCompletion`, `Message`, …). **Add or update a fixture** when you introduce a new publicly relied-on field or when a provider’s JSON shape changes; keep filenames predictable (`openai_<resource>_…`, `anthropic_…`). Tests are offline (`serde_json` only).
+
+## Releases and semver baseline
+
+API compatibility for the crate root `pub use` surface is checked in CI with [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks) against a committed rustdoc JSON baseline: [`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json). CI regenerates current rustdoc on **nightly** with `cargo rustdoc -p flowgrid --features full -Z unstable-options -- …` and passes `--current-rustdoc target/doc/flowgrid.json` so the check never enables conflicting TLS features.
+
+When you **release** a version that changes the public API, refresh the baseline from the same nightly invocation (from the repo root, after bumping the crate version if needed), copy `target/doc/flowgrid.json` over `crates/flowgrid/semver/baseline_rustdoc.json`, and commit it together with the release PR.
 
 Licensed under MIT OR Apache-2.0 at your option (see crate `Cargo.toml`).

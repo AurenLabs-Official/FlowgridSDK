@@ -41,22 +41,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked
-      - name: Semver checks (vs crates.io if published)
-        id: crates_io
-        run: cargo semver-checks check-release -p flowgrid
-        continue-on-error: true
-      - name: Semver checks (git baseline)
-        if: steps.crates_io.outcome == 'failure'
-        run: |
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$BASE_SHA" ]; then BASE_SHA="HEAD~1"; fi
-          cargo semver-checks check-release -p flowgrid --baseline-rev "$BASE_SHA" --release-type minor
+      - name: Generate current rustdoc JSON (full features, single TLS)
+        run: cd crates/flowgrid && cargo +nightly rustdoc --features full -Z unstable-options -- -Z unstable-options --output-format json
+      - name: Semver checks (committed baseline)
+        run: cargo semver-checks check-release -p flowgrid --baseline-rustdoc crates/flowgrid/semver/baseline_rustdoc.json --current-rustdoc target/doc/flowgrid.json
 
   feature-matrix:
     runs-on: ubuntu-latest
@@ -64,6 +57,8 @@ jobs:
       fail-fast: false
       matrix:
         features:
+          - --no-default-features --features minimal
+          - --no-default-features --features openai,tls-rustls,enterprise
           - --no-default-features --features openai,tls-rustls
           - --no-default-features --features anthropic,tls-rustls
           - --no-default-features --features openai,tls-rustls,files

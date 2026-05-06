@@ -1,0 +1,10 @@
+{
+  "id": "contract_msg_1",
+  "type": "message",
+  "role": "assistant",
+  "content": [{ "type": "text", "text": "Hi" }],
+  "model": "claude-test",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 1, "output_tokens": 1 }
+}
