@@ -1,5 +1,7 @@
 //! Realtime WebSocket helper (feature `realtime`).
 //!
+//! OpenAI-only; compiled only with `openai` and `realtime`.
+//!
 //! Establishes a `wss://api.openai.com/v1/realtime` connection with the same authentication style
 //! as HTTP requests.
 

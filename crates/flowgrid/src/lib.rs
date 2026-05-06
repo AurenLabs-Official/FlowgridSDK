@@ -1,5 +1,9 @@
 //! Unified Flowgrid SDK for OpenAI and/or Anthropic HTTP APIs.
 //!
+//! The **stable** surface for semver is the `pub use` items at this crate root. The `internal`
+//! module tree (`internal::oai`, `internal::clu`, etc.) is private implementation detail and may
+//! change in minor releases without a major version bump.
+//!
 //! Enable providers with Cargo features `openai` and `anthropic` (both on by default). With **both**
 //! enabled, types that would clash are exported with `OpenAi*` / `Anthropic*` prefixes (for example
 //! [`OpenAiError`] and [`AnthropicError`]). If you build with only one provider, [`Error`] and

@@ -1,4 +1,8 @@
 //! Private implementation code; the stable surface is the `flowgrid` crate root.
+//!
+//! **Imports:** Prefer OpenAI-specific types and helpers via `crate::internal::oai::…` (and
+//! Anthropic via `crate::internal::clu::…`) instead of importing sibling modules such as
+//! `crate::internal::pagination` directly, except inside barrel files like `oai.rs`.
 
 mod client;
 mod error;
@@ -8,6 +12,9 @@ mod transport;
 
 #[cfg(feature = "openai")]
 mod pagination;
+
+// `#[cfg]` for OpenAI-only helper modules below must stay in sync with the matching `pub mod …`
+// shims in `oai.rs` (same predicates; `oai` is only built with `feature = "openai"`).
 
 #[cfg(all(
     feature = "openai",

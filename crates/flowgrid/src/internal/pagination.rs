@@ -1,3 +1,5 @@
+//! OpenAI-only helpers; compiled only with `feature = "openai"` (see `internal/mod.rs`).
+
 use serde::Deserialize;
 
 /// Generic list/cursor page matching common OpenAI list responses.

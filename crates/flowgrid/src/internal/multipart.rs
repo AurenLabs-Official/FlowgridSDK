@@ -1,4 +1,6 @@
 //! Multipart helpers for `files`, `images`, and `audio` uploads.
+//!
+//! OpenAI-only; compiled with `openai` plus one of `files` / `images` / `audio`.
 
 use crate::internal::error::oai::{Error, Result};
 use reqwest::multipart::Part;

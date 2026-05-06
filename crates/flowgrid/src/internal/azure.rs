@@ -1,5 +1,7 @@
 //! Azure OpenAI helper client (feature `azure`).
 //!
+//! OpenAI-only; compiled only with `openai` and `azure`.
+//!
 //! Azure uses the `api-key` header and typically requires an `api-version` query parameter on
 //! every request. This module configures [`crate::internal::oai::OpenAI`] accordingly.
 

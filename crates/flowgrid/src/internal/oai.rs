@@ -1,5 +1,8 @@
 //! Hand-crafted async OpenAI API client (inspired by openai-node layout).
 
+// `#[cfg]` on nested `pub mod` shims below must match the `mod …;` declarations in `mod.rs`
+// (same predicates for multipart/azure/webhooks/realtime; this module is only built with OpenAI).
+
 pub mod pagination {
     pub use crate::internal::pagination::*;
 }

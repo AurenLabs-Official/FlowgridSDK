@@ -1,5 +1,7 @@
 //! Webhook verification helpers (feature `webhooks`).
 //!
+//! OpenAI-only; compiled only with `openai` and `webhooks`.
+//!
 //! This follows the common `t=<unix>,v1=<hex(hmac)>` scheme used by OpenAI webhook examples.
 
 use crate::internal::client::oai::OpenAI;
