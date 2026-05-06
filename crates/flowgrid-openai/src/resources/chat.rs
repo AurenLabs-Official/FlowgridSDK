@@ -31,7 +31,11 @@ pub struct ChatCompletionsClient<'a> {
 impl<'a> ChatCompletionsClient<'a> {
     /// `POST /chat/completions`
     pub async fn create(&self, body: &CreateChatCompletionRequest) -> Result<ChatCompletion> {
-        let (v, _) = self.inner.transport.post_json("chat/completions", body).await?;
+        let (v, _) = self
+            .inner
+            .transport
+            .post_json("chat/completions", body)
+            .await?;
         Ok(v)
     }
 
@@ -40,7 +44,11 @@ impl<'a> ChatCompletionsClient<'a> {
         &self,
         body: &CreateChatCompletionRequest,
     ) -> Result<WithResponse<ChatCompletion>> {
-        let (data, meta) = self.inner.transport.post_json("chat/completions", body).await?;
+        let (data, meta) = self
+            .inner
+            .transport
+            .post_json("chat/completions", body)
+            .await?;
         Ok(WithResponse { data, meta })
     }
 
@@ -76,7 +84,10 @@ impl<'a> ChatCompletionsClient<'a> {
     }
 
     /// `GET /chat/completions`
-    pub async fn list(&self, params: &ChatCompletionListParams) -> Result<ListPage<ChatCompletion>> {
+    pub async fn list(
+        &self,
+        params: &ChatCompletionListParams,
+    ) -> Result<ListPage<ChatCompletion>> {
         let mut path = String::from("chat/completions");
         let mut ser = url::form_urlencoded::Serializer::new(String::new());
         if let Some(limit) = params.limit {

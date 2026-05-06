@@ -1,0 +1,21 @@
+[package]
+name = "flowgrid"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+description = "Meta-crate: re-exports flowgrid-openai and flowgrid-anthropic behind feature flags."
+repository = "https://github.com/example/flowgrid-sdk"
+
+[lib]
+name = "flowgrid"
+path = "src/lib.rs"
+
+[features]
+default = ["openai", "anthropic"]
+openai = ["dep:flowgrid-openai"]
+anthropic = ["dep:flowgrid-anthropic"]
+
+[dependencies]
+flowgrid-openai = { path = "../flowgrid-openai", optional = true }
+flowgrid-anthropic = { path = "../flowgrid-anthropic", optional = true }

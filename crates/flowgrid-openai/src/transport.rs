@@ -2,9 +2,7 @@ use crate::error::{ApiError, ErrorObject, Result};
 use bytes::Bytes;
 use futures::Stream;
 use futures::TryStreamExt;
-use reqwest::header::{
-    HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE,
-};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use serde::Serialize;
 use std::io;
@@ -41,9 +39,8 @@ pub struct ClientConfig {
 impl ClientConfig {
     /// Build from environment (`OPENAI_API_KEY`, optional org/project/base url).
     pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
-            crate::error::Error::Config("OPENAI_API_KEY not set".to_string())
-        })?;
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .map_err(|_| crate::error::Error::Config("OPENAI_API_KEY not set".to_string()))?;
         let base = std::env::var("OPENAI_BASE_URL")
             .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
         let base_url = url::Url::parse(&base)?;
@@ -112,9 +109,7 @@ impl HttpTransport {
     pub fn new(mut config: ClientConfig) -> Result<Self> {
         let path = config.base_url.path();
         if !path.is_empty() && !path.ends_with('/') {
-            config
-                .base_url
-                .set_path(&format!("{path}/"));
+            config.base_url.set_path(&format!("{path}/"));
         }
         let inner = Client::builder().timeout(config.timeout).build()?;
         Ok(Self {
@@ -124,10 +119,7 @@ impl HttpTransport {
     }
 
     fn user_agent(&self) -> HeaderValue {
-        let base = format!(
-            "flowgrid-openai/{} rust-reqwest",
-            env!("CARGO_PKG_VERSION")
-        );
+        let base = format!("flowgrid-openai/{} rust-reqwest", env!("CARGO_PKG_VERSION"));
         let s = match &self.config.user_agent_suffix {
             Some(suffix) => format!("{base} {suffix}"),
             None => base,
@@ -186,9 +178,7 @@ impl HttpTransport {
         let mut rb = rb;
         loop {
             let clone = rb.try_clone().ok_or_else(|| {
-                crate::error::Error::Config(
-                    "request could not be cloned for retries".to_string(),
-                )
+                crate::error::Error::Config("request could not be cloned for retries".to_string())
             })?;
             match rb.send().await {
                 Ok(resp) => {
@@ -355,9 +345,7 @@ impl HttpTransport {
             let text = resp.text().await.unwrap_or_default();
             return Err(Self::api_error_from_text(status, &text, headers).into());
         }
-        let st = resp
-            .bytes_stream()
-            .map_err(std::io::Error::other);
+        let st = resp.bytes_stream().map_err(std::io::Error::other);
         Ok((st, meta))
     }
 

@@ -8,8 +8,7 @@ use std::pin::Pin;
 use std::result::Result as StdResult;
 
 /// Boxed byte stream from the HTTP client.
-pub type BoxedByteStream =
-    Pin<Box<dyn Stream<Item = StdResult<Bytes, std::io::Error>> + Send>>;
+pub type BoxedByteStream = Pin<Box<dyn Stream<Item = StdResult<Bytes, std::io::Error>> + Send>>;
 
 /// Typed Responses API client (`client.responses`).
 pub struct ResponsesClient<'a> {
@@ -41,7 +40,11 @@ impl<'a> ResponsesClient<'a> {
         &self,
         body: &CreateResponseRequest,
     ) -> Result<(SseStream<BoxedByteStream>, crate::transport::ResponseMeta)> {
-        let (stream, meta) = self.inner.transport.post_stream_bytes("responses", body).await?;
+        let (stream, meta) = self
+            .inner
+            .transport
+            .post_stream_bytes("responses", body)
+            .await?;
         let boxed: BoxedByteStream = Box::pin(stream);
         Ok((SseStream::new(boxed), meta))
     }

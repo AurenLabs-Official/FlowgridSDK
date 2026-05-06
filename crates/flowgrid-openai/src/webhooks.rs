@@ -61,8 +61,7 @@ impl<'a> WebhooksClient<'a> {
             }
         }
         let ts = ts.ok_or_else(|| Error::Webhook("missing timestamp in signature".to_string()))?;
-        let expected =
-            v1.ok_or_else(|| Error::Webhook("missing v1 signature".to_string()))?;
+        let expected = v1.ok_or_else(|| Error::Webhook("missing v1 signature".to_string()))?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

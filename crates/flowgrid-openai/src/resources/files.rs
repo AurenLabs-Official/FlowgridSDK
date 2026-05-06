@@ -15,7 +15,11 @@ impl<'a> FilesClient<'a> {
 
     /// `POST /files` (multipart).
     pub async fn create(&self, form: Form) -> Result<Value> {
-        let (v, _) = self.inner.transport.post_multipart_json("files", form).await?;
+        let (v, _) = self
+            .inner
+            .transport
+            .post_multipart_json("files", form)
+            .await?;
         Ok(v)
     }
 

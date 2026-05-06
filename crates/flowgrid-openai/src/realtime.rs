@@ -18,10 +18,7 @@ pub type RealtimeSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>
 pub async fn connect(client: &OpenAI, model: &str) -> Result<RealtimeSocket> {
     let mut url = url::Url::parse("wss://api.openai.com/v1/realtime").map_err(Error::Url)?;
     url.query_pairs_mut().append_pair("model", model);
-    let mut req = url
-        .as_str()
-        .into_client_request()
-        .map_err(Error::Ws)?;
+    let mut req = url.as_str().into_client_request().map_err(Error::Ws)?;
     let key = format!("Bearer {}", client.transport.config.api_key);
     {
         let headers = req.headers_mut();

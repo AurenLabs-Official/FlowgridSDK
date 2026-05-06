@@ -14,7 +14,11 @@ impl<'a> VectorStoresClient<'a> {
 
     /// `POST /vector_stores`
     pub async fn create(&self, body: &Value) -> Result<Value> {
-        let (v, _) = self.inner.transport.post_json("vector_stores", body).await?;
+        let (v, _) = self
+            .inner
+            .transport
+            .post_json("vector_stores", body)
+            .await?;
         Ok(v)
     }
 

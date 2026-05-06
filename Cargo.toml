@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/flowgrid-openai"]
+members = [
+    "crates/flowgrid-openai",
+    "crates/flowgrid-anthropic",
+    "crates/flowgrid",
+]

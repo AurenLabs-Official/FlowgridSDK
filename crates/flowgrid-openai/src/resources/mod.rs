@@ -26,20 +26,6 @@ mod moderations;
 #[cfg(feature = "vector_stores")]
 mod vector_stores;
 
-pub use chat::{
-    ChatClient, ChatCompletion, ChatCompletionChoice, ChatCompletionDeleted, ChatCompletionListParams,
-    ChatCompletionMessage, ChatCompletionMessagesListParams, ChatCompletionsClient,
-    CreateChatCompletionRequest,
-};
-pub use completions::{
-    Completion, CompletionChoice, CompletionsClient, CreateCompletionRequest,
-};
-pub use embeddings::{
-    CreateEmbeddingRequest, CreateEmbeddingResponse, Embedding, EmbeddingsClient,
-};
-pub use responses::{
-    BoxedByteStream, CreateResponseRequest, ResponseDeleted, ResponseObject, ResponsesClient,
-};
 #[cfg(feature = "admin")]
 pub use admin::AdminClient;
 #[cfg(feature = "assistants")]
@@ -48,8 +34,17 @@ pub use assistants::AssistantsClient;
 pub use audio::AudioClient;
 #[cfg(feature = "batches")]
 pub use batches::BatchesClient;
+pub use chat::{
+    ChatClient, ChatCompletion, ChatCompletionChoice, ChatCompletionDeleted,
+    ChatCompletionListParams, ChatCompletionMessage, ChatCompletionMessagesListParams,
+    ChatCompletionsClient, CreateChatCompletionRequest,
+};
+pub use completions::{Completion, CompletionChoice, CompletionsClient, CreateCompletionRequest};
 #[cfg(feature = "containers")]
 pub use containers::ContainersClient;
+pub use embeddings::{
+    CreateEmbeddingRequest, CreateEmbeddingResponse, Embedding, EmbeddingsClient,
+};
 #[cfg(feature = "evals")]
 pub use evals::EvalsClient;
 #[cfg(feature = "files")]
@@ -60,5 +55,8 @@ pub use fine_tuning::FineTuningClient;
 pub use images::ImagesClient;
 #[cfg(feature = "moderations")]
 pub use moderations::ModerationsClient;
+pub use responses::{
+    BoxedByteStream, CreateResponseRequest, ResponseDeleted, ResponseObject, ResponsesClient,
+};
 #[cfg(feature = "vector_stores")]
 pub use vector_stores::VectorStoresClient;
