@@ -195,16 +195,16 @@ pub fn load_gpt2_into_nano_gpt<B: Backend>(
         let bk = b_all.clone().narrow(0, d, d);
         let bv = b_all.narrow(0, 2 * d, d);
 
-        attn.q_proj.weight = attn.q_proj.weight.clone().map(|_| wq.clone());
-        attn.k_proj.weight = attn.k_proj.weight.clone().map(|_| wk.clone());
-        attn.v_proj.weight = attn.v_proj.weight.clone().map(|_| wv.clone());
-        if let Some(b) = attn.q_proj.bias.as_mut() {
+        attn.q_proj.base.weight = attn.q_proj.base.weight.clone().map(|_| wq.clone());
+        attn.k_proj.base.weight = attn.k_proj.base.weight.clone().map(|_| wk.clone());
+        attn.v_proj.base.weight = attn.v_proj.base.weight.clone().map(|_| wv.clone());
+        if let Some(b) = attn.q_proj.base.bias.as_mut() {
             *b = b.clone().map(|_| bq.clone());
         }
-        if let Some(b) = attn.k_proj.bias.as_mut() {
+        if let Some(b) = attn.k_proj.base.bias.as_mut() {
             *b = b.clone().map(|_| bk.clone());
         }
-        if let Some(b) = attn.v_proj.bias.as_mut() {
+        if let Some(b) = attn.v_proj.base.bias.as_mut() {
             *b = b.clone().map(|_| bv.clone());
         }
 
@@ -216,8 +216,8 @@ pub fn load_gpt2_into_nano_gpt<B: Backend>(
             .ok_or_else(|| FgError::shape("c_proj.bias"))?;
         let wcp = tensor_f2_from_bytes::<B>("c_proj_w", &cpw.0, &cpw.2, &cpw.1, device)?;
         let bcp = tensor_f1_from_bytes::<B>("c_proj_b", &cpb.0, &cpb.2, d, device)?;
-        attn.o_proj.weight = attn.o_proj.weight.clone().map(|_| wcp.clone());
-        if let Some(b) = attn.o_proj.bias.as_mut() {
+        attn.o_proj.base.weight = attn.o_proj.base.weight.clone().map(|_| wcp.clone());
+        if let Some(b) = attn.o_proj.base.bias.as_mut() {
             *b = b.clone().map(|_| bcp.clone());
         }
 
@@ -231,8 +231,8 @@ pub fn load_gpt2_into_nano_gpt<B: Backend>(
         // `mlp.c_fc`: Conv1D `nf = 4 * d`, `nx = d` → `[d, 4 * d]` matches Burn `Linear(d, 4d)`.
         let wfc = tensor_f2_from_bytes::<B>("c_fc_w", &fcw.0, &fcw.2, &fcw.1, device)?;
         let bfc = tensor_f1_from_bytes::<B>("c_fc_b", &fcb.0, &fcb.2, 4 * d, device)?;
-        mlp.up.weight = mlp.up.weight.clone().map(|_| wfc.clone());
-        if let Some(b) = mlp.up.bias.as_mut() {
+        mlp.up.base.weight = mlp.up.base.weight.clone().map(|_| wfc.clone());
+        if let Some(b) = mlp.up.base.bias.as_mut() {
             *b = b.clone().map(|_| bfc.clone());
         }
 
@@ -245,8 +245,8 @@ pub fn load_gpt2_into_nano_gpt<B: Backend>(
         // `mlp.c_proj`: Conv1D `nf = d`, `nx = 4 * d` → `[4 * d, d]` matches Burn `Linear(4d, d)`.
         let wpr = tensor_f2_from_bytes::<B>("mlp_proj_w", &prw.0, &prw.2, &prw.1, device)?;
         let bpr = tensor_f1_from_bytes::<B>("mlp_proj_b", &prb.0, &prb.2, d, device)?;
-        mlp.down.weight = mlp.down.weight.clone().map(|_| wpr.clone());
-        if let Some(b) = mlp.down.bias.as_mut() {
+        mlp.down.base.weight = mlp.down.base.weight.clone().map(|_| wpr.clone());
+        if let Some(b) = mlp.down.base.bias.as_mut() {
             *b = b.clone().map(|_| bpr.clone());
         }
     }

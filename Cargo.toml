@@ -43,3 +43,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.30", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+blake3 = "1.5"

@@ -9,13 +9,13 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 | Area | Status |
 |------|--------|
 | **CPU / NdArray** decoder (`NanoGpt`), RoPE + KV-cache + cache parity tests | **Works** (preview) |
-| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json`) | **Works** (preview) |
+| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json` with `manifest_version` + BLAKE3 `fingerprint` including `model.bin`) | **Works** (preview) |
 | **Sampler** (greedy / temperature / top-k) + CLI `generate` | **Works** (preview) |
 | **GPT-2 safetensors → `NanoGpt`** (`load_gpt2_into_nano_gpt`, Conv1D `[nx, nf]` layout, `lm_head` orientation) | **Works** (preview); LayerNorm from HF still init defaults |
 | **Eval** `perplexity` + `EvalReport` JSON + `flowgrid-llm eval --baseline-ppl --max-regression-pct` + `--stride` | **Works** (preview) |
 | **`flowgrid-serve`** real decode when `FLOWGRID_SERVE_CHECKPOINT` set; SSE one event per streamed token; tokenizer from manifest | **Works** (preview) |
 | **Studio UI** job start with **kind + command allowlist** | **Partial** |
-| **LoRA** `LoraLinear` forward + `merged_linear` / tests; `attach_lora` model-wide | **Roadmap** (merge helpers work on adapter modules only) |
+| **LoRA** `LoraLinear` forward + `merged_linear`; `attach_lora` for `NanoGpt` (wraps targeted projections; `gate` reserved for non–nano-GPT arch) | **Works** (preview) |
 | **Llama / Mistral / Qwen** | **Preview**: `expected_keys` + `validate_*_keys` only; no full tensor map into `NanoGpt` yet |
 | **GPU backends** | **Feature-gated** on `flowgrid-tensor` (`wgpu`, `cuda`, `tch`, `metal`, `candle`) — manual benches first |
 | **ROME/MEMIT** (`flowgrid-edit`) | **Experimental** — gated until checkpoint + LoRA path is stable |
@@ -70,7 +70,7 @@ Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_
 ## CI
 
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test --workspace` (see `.github/workflows/ci.yml`).
+`cargo test --workspace`, plus Linux `cargo test -p flowgrid --features full` and a **Windows** job with `CARGO_TARGET_DIR=target/win-full` to catch linker locking issues (see root `README.md`).
 
 ## Dependency pin
 

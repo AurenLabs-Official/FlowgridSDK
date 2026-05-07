@@ -8,6 +8,7 @@ description = "Checkpoint manifest and model persistence helpers for Flowgrid LL
 
 [dependencies]
 anyhow.workspace = true
+blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 burn = { workspace = true }

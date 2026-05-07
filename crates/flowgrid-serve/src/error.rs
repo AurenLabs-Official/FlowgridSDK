@@ -1,7 +1,8 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde_json::json;
+
+use crate::openai_compat::openai_error_value;
 
 #[derive(Debug, thiserror::Error)]
 #[allow(dead_code)]
@@ -14,10 +15,20 @@ pub enum ServeError {
 
 impl IntoResponse for ServeError {
     fn into_response(self) -> Response {
-        let status = match self {
-            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        let (status, typ, code, msg) = match &self {
+            Self::BadRequest(m) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                "bad_request",
+                m.as_str(),
+            ),
+            Self::Internal(m) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "server_error",
+                "internal",
+                m.as_str(),
+            ),
         };
-        (status, Json(json!({ "error": self.to_string() }))).into_response()
+        (status, Json(openai_error_value(typ, code, msg))).into_response()
     }
 }

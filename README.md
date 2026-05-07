@@ -6,7 +6,11 @@
 
 Enable either or both providers with Cargo features (`openai`, `anthropic`; both default on). The stable API is the **crate root** `pub use` surface (no `flowgrid::openai` / `flowgrid::anthropic` modules).
 
-Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml) with your Git remote before publishing to [crates.io](https://crates.io).
+Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml) if they still point at `example/*` before publishing to [crates.io](https://crates.io).
+
+## Preview limits (LLM stack)
+
+The HTTP `flowgrid` crate is stable; local LLM crates are **preview**: checkpoint manifests may gain new fields; `flowgrid-serve` token counts in `usage` are **heuristic** (~bytes/4), not tiktoken-exact; HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see above).
 
 Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/api.md) (Messages, Batches, Models, beta namespaces), without using Python at runtime.
 
@@ -14,7 +18,17 @@ Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubus
 
 Optional workspace crates under [`crates/`](crates/) add a **Rust-native** language-model pipeline (tokenizer → mmap data → nano LM → CLI). Overview and commands: [`docs/llm/overview.md`](docs/llm/overview.md).
 
-**Windows:** parallel test binaries can trigger `LNK1104` (linker cannot open `.exe`). Retry with `set CARGO_BUILD_JOBS=1` or run tests one crate at a time.
+**Windows:** parallel test binaries can trigger `LNK1104` (linker cannot open the output `.exe`). Typical causes are another `cargo`/rustc/link.exe still using the same artifact, IDE background builds, or AV/indexers locking files under `target\`.
+
+- Retry with a **separate artifact directory** so full-feature tests do not contend with your default `target\`:
+
+  ```powershell
+  $env:CARGO_TARGET_DIR = "target\\full"
+  $env:CARGO_BUILD_JOBS = "1"
+  cargo test -p flowgrid --features full
+  ```
+
+- Close duplicate builds, pause rust-analyzer rebuilds if needed, then retry. `cargo check -p flowgrid --features full --tests` staying green while `cargo test` fails usually confirms locking rather than a code error.
 
 ```bash
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin

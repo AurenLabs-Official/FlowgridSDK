@@ -96,14 +96,7 @@ impl<B: Backend> LoraLinear<B> {
     }
 }
 
-/// Attach LoRA adapters to a model according to target spec.
-///
-/// **Preview:** module-wide injection of `LoraLinear` into [`NanoGpt`] blocks is a larger type-system
-/// change (replace `Linear` targets per-layer). Today this returns the model unchanged; merge helpers
-/// ([`LoraLinear::merged_linear`]) and [`merge_lora`] work on explicit adapter modules.
-pub fn attach_lora<M>(model: M, _spec: &LoraSpec) -> M {
-    model
-}
+pub use crate::attach_lora::attach_lora;
 
 pub trait MergeLoraModel {
     type Output;

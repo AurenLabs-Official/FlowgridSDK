@@ -90,6 +90,18 @@ jobs:
       - name: Semver checks (committed baseline)
         run: cargo +stable semver-checks check-release -p flowgrid --baseline-rustdoc crates/flowgrid/semver/baseline_rustdoc.json --current-rustdoc target/doc/flowgrid.json
 
+  windows-smoke:
+    runs-on: windows-latest
+    env:
+      CARGO_TARGET_DIR: target/win-full
+      CARGO_BUILD_JOBS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: test (flowgrid, full, isolated target dir)
+        run: cargo test -p flowgrid --features full -j 1
+
   feature-matrix:
     runs-on: ubuntu-latest
     strategy:

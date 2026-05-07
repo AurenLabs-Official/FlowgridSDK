@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "OpenAI-shaped HTTP inference server for Flowgrid LLM."
 
+[lib]
+name = "flowgrid_serve"
+path = "src/lib.rs"
+
 [[bin]]
 name = "flowgrid-serve"
 path = "src/main.rs"
@@ -31,3 +35,6 @@ rand = "0.8"
 flowgrid-model = { path = "../flowgrid-model" }
 flowgrid-checkpoint = { path = "../flowgrid-checkpoint" }
 flowgrid-tokenizer = { path = "../flowgrid-tokenizer" }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

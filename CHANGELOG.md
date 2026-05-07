@@ -45,5 +45,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial crates.io-aligned snapshot (replace date on first publish).
 
-[Unreleased]: https://github.com/example/flowgrid-sdk/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/example/flowgrid-sdk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/pwitt/FlowgridSDK/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/pwitt/FlowgridSDK/releases/tag/v0.1.0

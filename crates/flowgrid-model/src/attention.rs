@@ -1,9 +1,10 @@
-use burn::nn::{Linear, LinearConfig};
+use burn::nn::LinearConfig;
 use burn::tensor::activation;
 use burn::tensor::{backend::Backend, Tensor};
 use flowgrid_tensor::{Config, Module};
 
 use crate::cache::KvCache;
+use crate::lora::{LoraLinear, LoraLinearConfig};
 use crate::rope::{apply_rope_qk, rope_tables};
 
 #[derive(Config, Debug)]
@@ -20,24 +21,26 @@ pub struct CausalSelfAttnConfig {
 
 #[derive(Module, Debug)]
 pub struct CausalSelfAttn<B: Backend> {
-    pub q_proj: Linear<B>,
-    pub k_proj: Linear<B>,
-    pub v_proj: Linear<B>,
-    pub o_proj: Linear<B>,
-    n_head: usize,
-    d_k: usize,
-    use_rope: bool,
-    rope_theta: f32,
-    max_seq: usize,
+    pub q_proj: LoraLinear<B>,
+    pub k_proj: LoraLinear<B>,
+    pub v_proj: LoraLinear<B>,
+    pub o_proj: LoraLinear<B>,
+    pub(crate) n_head: usize,
+    pub(crate) d_k: usize,
+    pub(crate) use_rope: bool,
+    pub(crate) rope_theta: f32,
+    pub(crate) max_seq: usize,
 }
 
 impl CausalSelfAttnConfig {
     pub fn init<B: Backend>(&self, n_embd: usize, device: &B::Device) -> CausalSelfAttn<B> {
+        let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
+        let proj = |n_in, n_out| disabled.init(LinearConfig::new(n_in, n_out).init(device), device);
         CausalSelfAttn {
-            q_proj: LinearConfig::new(n_embd, n_embd).init(device),
-            k_proj: LinearConfig::new(n_embd, n_embd).init(device),
-            v_proj: LinearConfig::new(n_embd, n_embd).init(device),
-            o_proj: LinearConfig::new(n_embd, n_embd).init(device),
+            q_proj: proj(n_embd, n_embd),
+            k_proj: proj(n_embd, n_embd),
+            v_proj: proj(n_embd, n_embd),
+            o_proj: proj(n_embd, n_embd),
             n_head: self.n_head.max(1),
             d_k: (n_embd / self.n_head.max(1)).max(1),
             use_rope: self.use_rope,

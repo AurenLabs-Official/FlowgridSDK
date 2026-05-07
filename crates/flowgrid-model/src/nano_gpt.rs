@@ -74,7 +74,7 @@ impl<B: Backend> Block<B> {
             max_seq: cfg.block_size,
         };
         Self {
-            attn: attn_cfg.init(cfg.n_embd, device),
+            attn: attn_cfg.init::<B>(cfg.n_embd, device),
             mlp: Mlp::new(cfg.n_embd, cfg.dropout, device),
             pre_norm: NormConfig::new(cfg.n_embd).init(device),
             post_norm: NormConfig::new(cfg.n_embd).init(device),

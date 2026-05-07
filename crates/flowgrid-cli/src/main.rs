@@ -52,6 +52,7 @@ enum Cmd {
     },
     /// Mean cross-entropy diagnostic over mmap windows; `--learn` runs a tiny Adam pass.
     Train {
+        /// Token mmap (`prepare` output).
         #[arg(short, long)]
         tokens: PathBuf,
         #[arg(long, default_value_t = 256)]
@@ -84,8 +85,10 @@ enum Cmd {
         resume: Option<PathBuf>,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        /// Enable LoRA adapters on projections listed in `--lora-targets` (attention `q,k,v,o` and MLP `up,down`; `gate` is a stub for future archs).
         #[arg(long)]
         lora: bool,
+        /// Comma-separated: `q,k,v,o,up,down,gate`.
         #[arg(long, default_value = "")]
         lora_targets: String,
         #[arg(long, default_value_t = 16)]

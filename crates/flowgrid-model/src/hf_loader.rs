@@ -140,8 +140,11 @@ pub fn load_safetensors_bytes(path: impl AsRef<Path>) -> FgResult<HashMap<String
     Ok(out)
 }
 
-/// Placeholder: convert raw float tensor bytes into a Burn tensor on device `device`.
-pub fn raw_f32_tensor<B: Backend>(
+/// Decode **little-endian f32** weight bytes (e.g. from safetensors **F32** views) into a rank-2 tensor.
+/// For **BF16/F16** payloads from HF, convert host-side with [`bf16_bytes_to_f32`] / [`fp16_bytes_to_f32`]
+/// first, or keep using the GPT-2 loader which maps dtypes for you. **INT8 / block-compressed** safetensors
+/// weights are not supported here yet.
+pub fn decode_weight_tensor_f32_le<B: Backend>(
     data: &[u8],
     shape: [usize; 2],
     device: &B::Device,
@@ -158,6 +161,16 @@ pub fn raw_f32_tensor<B: Backend>(
         })
         .collect();
     Ok(Tensor::<B, 1>::from_floats(floats.as_slice(), device).reshape(shape))
+}
+
+/// Renamed to [`decode_weight_tensor_f32_le`].
+#[deprecated(note = "renamed to decode_weight_tensor_f32_le")]
+pub fn raw_f32_tensor<B: Backend>(
+    data: &[u8],
+    shape: [usize; 2],
+    device: &B::Device,
+) -> FgResult<Tensor<B, 2>> {
+    decode_weight_tensor_f32_le(data, shape, device)
 }
 
 pub fn bf16_bytes_to_f32(data: &[u8]) -> FgResult<Vec<f32>> {

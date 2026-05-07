@@ -1,7 +1,7 @@
 use burn::backend::NdArray;
 use burn::tensor::Int;
 use burn::tensor::Tensor;
-use flowgrid_checkpoint::{load_nano_gpt_checkpoint, save_nano_gpt_checkpoint};
+use flowgrid_checkpoint::{load_manifest, load_nano_gpt_checkpoint, save_nano_gpt_checkpoint};
 use flowgrid_model::NanoGptConfig;
 use tempfile::tempdir;
 
@@ -23,6 +23,9 @@ fn save_load_forward_matches() {
     let model = cfg.init::<B>(&device);
     let dir = tempdir().unwrap();
     save_nano_gpt_checkpoint(&model, dir.path(), &cfg, None).unwrap();
+    let m = load_manifest(dir.path()).unwrap();
+    assert_eq!(m.manifest_version, 1);
+    assert!(m.fingerprint.starts_with("b3:"));
     let (loaded, _) = load_nano_gpt_checkpoint::<B>(dir.path(), &device).unwrap();
 
     let ids: Vec<i32> = vec![3, 7, 9, 11];

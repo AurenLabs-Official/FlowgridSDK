@@ -3,8 +3,11 @@
 mod jobs;
 
 use anyhow::{Context, Result};
+use axum::body::to_bytes;
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::header;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Json;
@@ -21,6 +24,14 @@ use tokio::process::Command;
 struct UiState {
     db: Mutex<Connection>,
     children: Mutex<HashMap<String, u32>>,
+    /// Optional bearer key required on mutating routes (e.g. `/api/jobs/start`).
+    job_admin_key: Option<String>,
+    allow_advanced_jobs: bool,
+    train_tokens_path: String,
+    prepare_input_path: String,
+    serve_url: Option<String>,
+    serve_api_key: Option<String>,
+    http: reqwest::Client,
 }
 
 fn now_ms() -> i64 {
@@ -53,10 +64,17 @@ fn init_db(path: &PathBuf) -> Result<Connection> {
 }
 
 async fn index() -> impl IntoResponse {
+    let body = r#"<!doctype html><meta charset="utf-8"><title>flowgrid-ui</title>
+<h1>Run Control Center</h1>
+<p>API: <code>/api/jobs/start</code> with JSON <code>{"kind":"prepare","template":"prepare-readme"}</code>
+or <code>{"kind":"train","template":"train-tiny"}</code>. Free-form <code>command</code> requires
+<code>advanced: true</code> and server env <code>FLOWGRID_UI_ALLOW_ADVANCED=1</code>.</p>
+<p>Proxy to the LLM server: <code>POST /api/llm/v1/chat/completions</code> when <code>FLOWGRID_UI_SERVE_URL</code> is set
+(use <code>FLOWGRID_UI_SERVE_API_KEY</code> for outbound auth).</p>"#;
     (
         StatusCode::OK,
         [("content-type", "text/html; charset=utf-8")],
-        "<!doctype html><title>flowgrid-ui</title><h1>Run Control Center</h1><p>Use /api/jobs, /api/checkpoints, /api/runs/compare</p>",
+        body,
     )
 }
 
@@ -74,6 +92,21 @@ async fn ready(State(st): State<Arc<UiState>>) -> impl IntoResponse {
         (StatusCode::OK, "ready")
     } else {
         (StatusCode::SERVICE_UNAVAILABLE, "not ready")
+    }
+}
+
+fn require_job_admin(headers: &HeaderMap, expected: Option<&String>) -> Result<(), StatusCode> {
+    let Some(exp) = expected else {
+        return Ok(());
+    };
+    let auth = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default();
+    if auth == format!("Bearer {exp}") {
+        Ok(())
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
@@ -118,8 +151,17 @@ async fn api_jobs(State(st): State<Arc<UiState>>) -> impl IntoResponse {
 
 async fn api_start_job(
     State(st): State<Arc<UiState>>,
+    headers: HeaderMap,
     Json(req): Json<StartJobReq>,
 ) -> axum::response::Response {
+    if let Err(code) = require_job_admin(&headers, st.job_admin_key.as_ref()) {
+        return (
+            code,
+            Json(json!({ "error": "missing or invalid FLOWGRID_UI_JOB_ADMIN_KEY" })),
+        )
+            .into_response();
+    }
+
     const ALLOWED_KINDS: &[&str] = &["train", "eval", "generate", "prepare", "merge-lora"];
     if !ALLOWED_KINDS.contains(&req.kind.as_str()) {
         return (
@@ -128,37 +170,38 @@ async fn api_start_job(
         )
             .into_response();
     }
-    if !req.command.is_empty() {
-        let prog = req.command[0].as_str();
-        if prog != "cargo" && !prog.ends_with("flowgrid-llm") && prog != "flowgrid-llm" {
+
+    let argv = match jobs::resolve_job_argv(
+        &req,
+        st.allow_advanced_jobs,
+        &st.train_tokens_path,
+        &st.prepare_input_path,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "command must start with cargo or flowgrid-llm" })),
+                Json(json!({ "error": e.as_ref() })),
             )
                 .into_response();
         }
+    };
+
+    let prog = argv[0].as_str();
+    if prog != "cargo" && !prog.ends_with("flowgrid-llm") && prog != "flowgrid-llm" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "command must start with cargo or flowgrid-llm" })),
+        )
+            .into_response();
     }
+
     let id = uuid::Uuid::new_v4().to_string();
     let log_path = format!("flowgrid_job_{id}.log");
 
-    let mut cmd = if req.command.is_empty() {
-        #[cfg(windows)]
-        {
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg("echo no command");
-            c
-        }
-        #[cfg(not(windows))]
-        {
-            let mut c = Command::new("sh");
-            c.arg("-c").arg("echo no command");
-            c
-        }
-    } else {
-        Command::new(&req.command[0])
-    };
-    if !req.command.is_empty() && req.command.len() > 1 {
-        cmd.args(&req.command[1..]);
+    let mut cmd = Command::new(&argv[0]);
+    if argv.len() > 1 {
+        cmd.args(&argv[1..]);
     }
     let log = std::fs::File::create(&log_path).ok();
     if let Some(log) = log {
@@ -255,6 +298,62 @@ async fn api_compare(Query(q): Query<CompareQ>) -> impl IntoResponse {
     }))
 }
 
+/// Forward JSON body to `flowgrid-serve` chat completions (adds outbound API key when configured).
+async fn api_llm_chat(
+    State(st): State<Arc<UiState>>,
+    headers: HeaderMap,
+    body: Body,
+) -> axum::response::Response {
+    let Some(ref base) = st.serve_url else {
+        return (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "FLOWGRID_UI_SERVE_URL is not set" })),
+        )
+            .into_response();
+    };
+    let Ok(bytes) = to_bytes(body, 512 * 1024).await else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "body too large" })),
+        )
+            .into_response();
+    };
+    let url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
+    let mut rb = st.http.post(url).body(bytes.to_vec());
+    rb = rb.header(header::CONTENT_TYPE, "application/json");
+    if let Some(ref k) = st.serve_api_key {
+        rb = rb.header(header::AUTHORIZATION, format!("Bearer {k}"));
+    } else if let Some(h) = headers.get(header::AUTHORIZATION) {
+        if let Ok(s) = h.to_str() {
+            rb = rb.header(header::AUTHORIZATION, s);
+        }
+    }
+    match rb.send().await {
+        Ok(res) => {
+            let status =
+                StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let ct = res.headers().get(header::CONTENT_TYPE).cloned();
+            let body = res.bytes().await.unwrap_or_default();
+            let mut resp = axum::response::Response::builder().status(status);
+            if let Some(ct) = ct {
+                resp = resp.header(header::CONTENT_TYPE, ct);
+            }
+            resp.body(Body::from(body)).unwrap_or_else(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "response build failed" })),
+                )
+                    .into_response()
+            })
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("upstream: {e}") })),
+        )
+            .into_response(),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -262,9 +361,28 @@ async fn main() -> Result<()> {
         .init();
     let db_path = std::env::var("FLOWGRID_UI_DB").unwrap_or_else(|_| "flowgrid_ui.sqlite".into());
     let conn = init_db(&PathBuf::from(&db_path)).context("init db")?;
+    let job_admin_key = std::env::var("FLOWGRID_UI_JOB_ADMIN_KEY").ok();
+    let allow_advanced_jobs = std::env::var("FLOWGRID_UI_ALLOW_ADVANCED").as_deref() == Ok("1");
+    let train_tokens_path =
+        std::env::var("FLOWGRID_UI_TRAIN_TOKENS").unwrap_or_else(|_| "target/readme.bin".into());
+    let prepare_input_path =
+        std::env::var("FLOWGRID_UI_PREPARE_INPUT").unwrap_or_else(|_| "README.md".into());
+    let serve_url = std::env::var("FLOWGRID_UI_SERVE_URL").ok();
+    let serve_api_key = std::env::var("FLOWGRID_UI_SERVE_API_KEY").ok();
+    let http = reqwest::Client::builder()
+        .build()
+        .context("reqwest client")?;
+
     let state = Arc::new(UiState {
         db: Mutex::new(conn),
         children: Mutex::new(HashMap::new()),
+        job_admin_key,
+        allow_advanced_jobs,
+        train_tokens_path,
+        prepare_input_path,
+        serve_url,
+        serve_api_key,
+        http,
     });
     let app = Router::new()
         .route("/", get(index))
@@ -278,6 +396,7 @@ async fn main() -> Result<()> {
         .route("/api/jobs/:id/log", get(api_job_log))
         .route("/api/checkpoints", get(api_checkpoints))
         .route("/api/checkpoints/:id", get(api_checkpoint))
+        .route("/api/llm/v1/chat/completions", post(api_llm_chat))
         .with_state(state);
     let addr: std::net::SocketAddr = "127.0.0.1:9010".parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await?;
