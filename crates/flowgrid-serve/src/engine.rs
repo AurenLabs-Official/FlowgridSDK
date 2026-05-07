@@ -1,6 +1,7 @@
 //! CPU `NanoGpt` inference (checkpoint + tokenizer) for the scheduler.
 
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::Context;
 use burn::backend::NdArray;
@@ -55,9 +56,12 @@ impl LocalLlm {
         max_new: usize,
         sampling: Sampling,
         seed: u64,
+        deadline: Option<Instant>,
     ) -> anyhow::Result<String> {
         let mut out = String::new();
-        self.complete_stream(prompt, max_new, sampling, seed, |piece| out.push_str(piece))?;
+        self.complete_stream(prompt, max_new, sampling, seed, deadline, |piece| {
+            out.push_str(piece)
+        })?;
         Ok(out)
     }
 
@@ -68,8 +72,18 @@ impl LocalLlm {
         max_new: usize,
         sampling: Sampling,
         seed: u64,
+        deadline: Option<Instant>,
         mut on_piece: F,
     ) -> anyhow::Result<()> {
+        let check_deadline = || -> anyhow::Result<()> {
+            if let Some(d) = deadline {
+                if Instant::now() > d {
+                    return Err(anyhow::anyhow!("inference timeout"));
+                }
+            }
+            Ok(())
+        };
+        check_deadline()?;
         let mut rng = StdRng::seed_from_u64(seed);
         let mut ids: Vec<i32> = self
             .tokenizer
@@ -91,6 +105,7 @@ impl LocalLlm {
         let seq = ids.len();
         let inp =
             Tensor::<InferB, 1, Int>::from_ints(ids.as_slice(), &self.device).reshape([1, seq]);
+        check_deadline()?;
         let logits = self.model.forward_step(inp, Some(&mut caches));
         let mut next = sample_from_last_logits(&logits, sampling, &mut rng);
         let mut decode_state = DecoderState::default();
@@ -102,6 +117,7 @@ impl LocalLlm {
         );
         let n_gen = max_new.max(1);
         for _ in 1..n_gen {
+            check_deadline()?;
             let t = Tensor::<InferB, 1, Int>::from_ints([next], &self.device).reshape([1, 1]);
             let logits = self.model.forward_step(t, Some(&mut caches));
             next = sample_from_last_logits(&logits, sampling, &mut rng);

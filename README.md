@@ -14,6 +14,8 @@ Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubus
 
 Optional workspace crates under [`crates/`](crates/) add a **Rust-native** language-model pipeline (tokenizer → mmap data → nano LM → CLI). Overview and commands: [`docs/llm/overview.md`](docs/llm/overview.md).
 
+**Windows:** parallel test binaries can trigger `LNK1104` (linker cannot open `.exe`). Retry with `set CARGO_BUILD_JOBS=1` or run tests one crate at a time.
+
 ```bash
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
 cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16

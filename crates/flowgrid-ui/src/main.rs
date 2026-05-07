@@ -140,14 +140,24 @@ async fn api_start_job(
     }
     let id = uuid::Uuid::new_v4().to_string();
     let log_path = format!("flowgrid_job_{id}.log");
+
     let mut cmd = if req.command.is_empty() {
-        Command::new("cmd")
+        #[cfg(windows)]
+        {
+            let mut c = Command::new("cmd");
+            c.arg("/C").arg("echo no command");
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            let mut c = Command::new("sh");
+            c.arg("-c").arg("echo no command");
+            c
+        }
     } else {
         Command::new(&req.command[0])
     };
-    if req.command.is_empty() {
-        cmd.arg("/C").arg("echo no command");
-    } else if req.command.len() > 1 {
+    if !req.command.is_empty() && req.command.len() > 1 {
         cmd.args(&req.command[1..]);
     }
     let log = std::fs::File::create(&log_path).ok();
@@ -178,9 +188,22 @@ async fn api_start_job(
 async fn api_stop_job(State(st): State<Arc<UiState>>, Path(id): Path<String>) -> impl IntoResponse {
     let pid = st.children.lock().expect("children").remove(&id);
     if let Some(pid) = pid {
-        let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .spawn();
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .spawn();
+        }
+        #[cfg(unix)]
+        {
+            let _ = Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .spawn();
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            let _ = pid;
+        }
     }
     let conn = st.db.lock().expect("db");
     let _ = conn.execute(

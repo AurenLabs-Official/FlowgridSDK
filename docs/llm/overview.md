@@ -65,7 +65,7 @@ cargo run -p flowgrid-serve
 # POST http://127.0.0.1:9000/v1/chat/completions
 ```
 
-Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`.
+Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`, `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS` (bounds each generation; default 10_000).
 
 ## CI
 

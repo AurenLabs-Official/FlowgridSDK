@@ -3,6 +3,7 @@ use flowgrid_tokenizer::FgTokenizer;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::engine::{serve_sampling_from_env, serve_seed_from_env, LocalLlm};
 
@@ -49,16 +50,19 @@ impl Scheduler {
         req_rx: mpsc::Receiver<SchedulerReq>,
         llm: Option<LocalLlm>,
         tokenizer: Option<FgTokenizer>,
-        _timeout_ms: u64,
+        timeout_ms: u64,
     ) {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
         while let Ok(req) = req_rx.recv() {
+            let deadline = Instant::now() + timeout;
+            let deadline = Some(deadline);
             match req {
                 SchedulerReq::Plain {
                     prompt,
                     max_new,
                     respond,
                 } => {
-                    let r = Self::run_plain(&llm, tokenizer.as_ref(), &prompt, max_new);
+                    let r = Self::run_plain(&llm, tokenizer.as_ref(), &prompt, max_new, deadline);
                     let _ = respond.send(r);
                 }
                 SchedulerReq::Stream {
@@ -74,6 +78,7 @@ impl Scheduler {
                             max_new.max(1),
                             sampling,
                             seed,
+                            deadline,
                             |piece| {
                                 let chunk = serde_json::json!({
                                     "object": "text.delta",
@@ -87,10 +92,15 @@ impl Scheduler {
                             let _ = chunk_tx.send(Err(anyhow!("{e}")));
                         }
                     } else {
-                        let echo = Self::echo_fallback(tokenizer.as_ref(), &prompt, max_new);
+                        let r = Self::echo_fallback_timed(
+                            tokenizer.as_ref(),
+                            &prompt,
+                            max_new,
+                            deadline,
+                        );
                         let chunk = serde_json::json!({
                             "object": "text.delta",
-                            "delta": echo,
+                            "delta": r,
                         })
                         .to_string();
                         let _ = chunk_tx.send(Ok(chunk));
@@ -98,6 +108,21 @@ impl Scheduler {
                 }
             }
         }
+    }
+
+    /// Echo / tokenizer path bounded by the same deadline as LLM inference.
+    fn echo_fallback_timed(
+        tokenizer: Option<&FgTokenizer>,
+        prompt: &str,
+        max_new: usize,
+        deadline: Option<Instant>,
+    ) -> String {
+        if let Some(d) = deadline {
+            if Instant::now() > d {
+                return "inference timeout".to_string();
+            }
+        }
+        Self::echo_fallback(tokenizer, prompt, max_new)
     }
 
     fn echo_fallback(tokenizer: Option<&FgTokenizer>, prompt: &str, max_new: usize) -> String {
@@ -120,18 +145,29 @@ impl Scheduler {
         tokenizer: Option<&FgTokenizer>,
         prompt: &str,
         max_new: usize,
+        deadline: Option<Instant>,
     ) -> Result<String> {
         let max_new = max_new.max(1);
         if let Some(engine) = llm {
             let sampling = serve_sampling_from_env();
             let seed = serve_seed_from_env();
             engine
-                .complete(prompt, max_new, sampling, seed)
+                .complete(prompt, max_new, sampling, seed, deadline)
                 .map_err(|e| anyhow!("{e}"))
         } else if let Some(tok) = tokenizer {
+            if let Some(d) = deadline {
+                if Instant::now() > d {
+                    return Err(anyhow!("inference timeout"));
+                }
+            }
             let ids = tok
                 .encode(prompt, true)
                 .map_err(|e| anyhow!("tokenize: {e}"))?;
+            if let Some(d) = deadline {
+                if Instant::now() > d {
+                    return Err(anyhow!("inference timeout"));
+                }
+            }
             let start = ids.len().saturating_sub(max_new);
             tok.decode(&ids[start..], true)
                 .map_err(|e| anyhow!("decode: {e}"))
