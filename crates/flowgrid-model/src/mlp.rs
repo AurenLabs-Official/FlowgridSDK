@@ -13,6 +13,16 @@ pub struct Mlp<B: Backend> {
 }
 
 impl<B: Backend> Mlp<B> {
+    /// Fold LoRA adapter weights into the base linear; adapter is reset to zero contribution (`r=1`, `α=0`).
+    pub fn merge_lora_layers(self, device: &B::Device) -> Self {
+        let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
+        Self {
+            up: disabled.init(self.up.merged_linear(), device),
+            down: disabled.init(self.down.merged_linear(), device),
+            dropout: self.dropout,
+        }
+    }
+
     pub fn new(n_embd: usize, dropout: f64, device: &B::Device) -> Self {
         let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
         Self {

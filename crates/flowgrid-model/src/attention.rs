@@ -51,6 +51,22 @@ impl CausalSelfAttnConfig {
 }
 
 impl<B: Backend> CausalSelfAttn<B> {
+    /// Fold LoRA adapter weights into each projection's base; adapters are reset to zero contribution.
+    pub fn merge_lora_layers(self, device: &B::Device) -> Self {
+        let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
+        Self {
+            q_proj: disabled.init(self.q_proj.merged_linear(), device),
+            k_proj: disabled.init(self.k_proj.merged_linear(), device),
+            v_proj: disabled.init(self.v_proj.merged_linear(), device),
+            o_proj: disabled.init(self.o_proj.merged_linear(), device),
+            n_head: self.n_head,
+            d_k: self.d_k,
+            use_rope: self.use_rope,
+            rope_theta: self.rope_theta,
+            max_seq: self.max_seq,
+        }
+    }
+
     pub fn uses_rope(&self) -> bool {
         self.use_rope
     }

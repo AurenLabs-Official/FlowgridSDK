@@ -64,6 +64,15 @@ impl NanoGptConfig {
 }
 
 impl<B: Backend> Block<B> {
+    fn merge_lora_layers(self, device: &Device<B>) -> Self {
+        Self {
+            attn: self.attn.merge_lora_layers(device),
+            mlp: self.mlp.merge_lora_layers(device),
+            pre_norm: self.pre_norm,
+            post_norm: self.post_norm,
+        }
+    }
+
     fn new(cfg: &NanoGptConfig, device: &Device<B>) -> Self {
         let attn_cfg = CausalSelfAttnConfig {
             n_head: cfg.n_head.max(1),
@@ -90,6 +99,22 @@ impl<B: Backend> Block<B> {
 }
 
 impl<B: Backend> NanoGpt<B> {
+    /// Merge all `LoraLinear` projections into their base weights (adapter contribution disabled).
+    /// Use after loading a checkpoint that was trained with LoRA to export a dense-equivalent model.
+    pub fn merge_lora_adapters(self, device: &Device<B>) -> Self {
+        let blocks = self
+            .blocks
+            .into_iter()
+            .map(|b| b.merge_lora_layers(device))
+            .collect();
+        Self {
+            tok_emb: self.tok_emb,
+            pos_emb: self.pos_emb,
+            blocks,
+            head: self.head,
+        }
+    }
+
     pub fn forward(&self, tokens: Tensor<B, 2, Int>) -> Tensor<B, 3> {
         self.logits_with_cache(tokens, None)
     }

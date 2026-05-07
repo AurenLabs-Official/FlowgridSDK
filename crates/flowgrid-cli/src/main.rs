@@ -499,7 +499,14 @@ fn main() -> Result<()> {
             let (model, manifest) = load_nano_gpt_checkpoint::<InferBackend>(&load, &device)
                 .context("load base checkpoint")?;
             let cfg = manifest.to_nano_gpt_config();
-            save_nano_gpt_checkpoint(&model, &save, &cfg, None, None)
+            let model = model.merge_lora_adapters(&device);
+            save_nano_gpt_checkpoint(
+                &model,
+                &save,
+                &cfg,
+                manifest.tokenizer_path.clone(),
+                None,
+            )
                 .with_context(|| format!("save merged checkpoint {}", save.display()))?;
             println!("merged LoRA -> {}", save.display());
         }

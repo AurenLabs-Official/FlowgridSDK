@@ -49,5 +49,8 @@ async fn chat_stream_ends_with_usage_in_sse() {
         text.contains("\"usage\"") && text.contains("prompt_tokens"),
         "expected usage in stream, got: {text}"
     );
-    assert!(text.contains("[DONE]") || text.contains("done"), "stream footer");
+    assert!(
+        text.contains("[DONE]"),
+        "expected SSE done sentinel, got: {text}"
+    );
 }
