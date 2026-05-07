@@ -118,3 +118,11 @@ required-features = ["openai"]
 [[example]]
 name = "anthropic_message"
 required-features = ["anthropic"]
+
+[[example]]
+name = "openai_assistants_e2e"
+required-features = ["openai", "assistants"]
+
+[[example]]
+name = "openai_responses_stream_accumulate"
+required-features = ["openai", "stream-types"]

@@ -128,6 +128,8 @@ From the repo root (requires API keys in the environment):
 
 ```bash
 OPENAI_API_KEY=sk-... cargo run -p flowgrid --example openai_chat_stream --features openai
+OPENAI_API_KEY=sk-... OPENAI_ASSISTANT_ID=asst_... cargo run -p flowgrid --example openai_assistants_e2e --features openai,assistants
+OPENAI_API_KEY=sk-... cargo run -p flowgrid --example openai_responses_stream_accumulate --features openai,stream-types
 ANTHROPIC_API_KEY=sk-ant-... cargo run -p flowgrid --example anthropic_message --features anthropic
 ```
 
@@ -159,6 +161,7 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 | `OPENAI_ORG_ID` | OpenAI | `OpenAI-Organization` header |
 | `OPENAI_PROJECT` | OpenAI | `OpenAI-Project` header |
 | `OPENAI_BASE_URL` | OpenAI | Override API base (default `https://api.openai.com/v1`; trailing slash normalized for path joins) |
+| `OPENAI_ASSISTANT_ID` | OpenAI | Existing assistant id for the `openai_assistants_e2e` example only |
 | `ANTHROPIC_API_KEY` | Anthropic | Required for config-from-env helpers |
 | `ANTHROPIC_API_BASE` | Anthropic | Override API base (default `https://api.anthropic.com/v1`) |
 | `ANTHROPIC_VERSION` | Anthropic | `anthropic-version` header (default `2023-06-01`) |
@@ -179,6 +182,18 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 - **`full`**: enables all optional areas above **except** TLS switching and **except** `opentelemetry` (enable `opentelemetry` explicitly when needed).
 
 Shared feature name **`batches`** turns on batch APIs for whichever provider(s) you have enabled.
+
+### `full` vs `enterprise`
+
+- **`full`**: pulls in the optional OpenAI/Anthropic surface area (Assistants, files, Azure, …) **and** enables **`tracing`** spans for outbound HTTP, but it does **not** enable the **`opentelemetry`** Cargo feature (no histogram metric emission from this crate until you add it).
+- **`enterprise`**: enables **`tracing`** and **`opentelemetry`** together so `flowgrid.http.request.duration_ms` is recorded when your app installs an OpenTelemetry meter provider (see [`docs/observability.md`](docs/observability.md)).
+- **Typical “all modules + metrics” setup:** keep **exactly one** TLS feature (`tls-rustls` or `tls-native`) and combine bundles explicitly, for example:
+
+```toml
+flowgrid = { version = "…", default-features = false, features = ["openai", "anthropic", "tls-rustls", "full", "enterprise"] }
+```
+
+Do **not** use `cargo ... --all-features`: it enables both TLS backends and fails to compile.
 
 ## Request hooks
 

@@ -30,3 +30,20 @@ Structured **`debug!`** logs on target **`flowgrid_http`** still emit **`provide
 ## OpenTelemetry setup
 
 Install a **meter provider** (and optionally a **tracer provider** if you bridge `tracing`) in your binary before making requests. Without a provider, the histogram API is a no-op. See the [OpenTelemetry Rust docs](https://opentelemetry.io/docs/languages/rust/) for initialization.
+
+## Dashboard / alerts (hints)
+
+These patterns stay vendor-neutral; map them to your backend’s query language (Grafana, Datadog, etc.):
+
+1. **Latency SLO** — from `flowgrid.http.request.duration_ms`, group or filter by **`flowgrid.provider`**, **`flowgrid.http.path`**, and **`http.request.method`**. Use percentiles (p95/p99) per path, not per request id.
+2. **Retry pressure** — alert when **`flowgrid.retry_count`** is often `> 0` for a path, or when a high share of spans show non-zero retry counts (can indicate throttling or upstream instability; pair with rate-limit attributes on the span when present).
+3. **Error class** — use **`http.response.status_class`** and **`flowgrid.http.error`** on the metric; surface 4xx/5xx jumps per **`flowgrid.http.path`**. Keep labels bounded (see *High cardinality* above).
+4. **Trace drill-down** — for user-visible failures, jump from metric/path to traces filtered by **`flowgrid.request_id`** on spans when the provider returned one.
+
+Snippet-style pseudocode for “slow outbound LLM calls” (your backend may rename the histogram—often dots become underscores in Prometheus exporters):
+
+```text
+histogram_quantile(0.95,
+  sum(rate(<histogram_name>_bucket{job="your_service"}[5m])) by (le, flowgrid_provider, flowgrid_http_path))
+)
+```

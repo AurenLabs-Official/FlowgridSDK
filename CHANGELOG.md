@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Examples: **`openai_assistants_e2e`** (Assistants thread → message → run → bounded poll) and **`openai_responses_stream_accumulate`** (Responses SSE + bounded text accumulation); README **`full` vs `enterprise`** subsection and **`docs/observability.md`** dashboard hints.
 - OpenAI **cursor list helpers**: **`ListPagesLimits`**, **`ListPage::after_cursor`**, **`AssistantsClient::list_all_typed`**, **`ThreadsClient::list_all_typed`**; **`ListPage`** forward-compatible **`extra`** map; Assistants **run steps** (**`ThreadRunStep`**, **`list_steps_typed`**) with fixtures + wiremock.
 - **HTTP**: **`post_empty`**, **`http_client_builder_hook`** on OpenAI / Anthropic / Azure configs and builders; `docs/http.md` updated (proxies, mTLS story).
 - Streaming (**`stream-types`**): **`OpenAiStreamTextLimits`**, **`StreamTextAccumulateError`**, bounded **`accumulate_openai_*_visible_text_into`** helpers.
