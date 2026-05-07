@@ -9,7 +9,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 | Area | Status |
 |------|--------|
 | **CPU / NdArray** decoder (`NanoGpt`), RoPE + KV-cache + cache parity tests | **Works** (preview) |
-| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json` with `manifest_version` + BLAKE3 `fingerprint` including `model.bin`) | **Works** (preview) |
+| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json` with `manifest_version` + BLAKE3 `fingerprint` including `model.bin`; optional LoRA sidecar pointer `lora` + `lora_schema_version`) | **Works** (preview) |
 | **Sampler** (greedy / temperature / top-k) + CLI `generate` | **Works** (preview) |
 | **GPT-2 safetensors → `NanoGpt`** (`load_gpt2_into_nano_gpt`, Conv1D `[nx, nf]` layout, `lm_head` orientation) | **Works** (preview); LayerNorm from HF still init defaults |
 | **Eval** `perplexity` + `EvalReport` JSON + `flowgrid-llm eval --baseline-ppl --max-regression-pct` + `--stride` | **Works** (preview) |
@@ -66,6 +66,20 @@ cargo run -p flowgrid-serve
 ```
 
 Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`, `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS` (bounds each generation; default 10_000).
+
+### Usage / `finish_reason` (exact vs approximate)
+
+| Mode | `prompt_tokens` / `completion_tokens` | `finish_reason` |
+|------|----------------------------------------|-----------------|
+| Local **`NanoGpt`** with checkpoint tokenizer | Encoder length of the prompt; one count per **generated** token id; streamed SSE uses the same totals on the final chunk | `stop` when `<eos>` is sampled (or token id from **`FLOWGRID_SERVE_EOS_ID`**) or on scheduler failure paths; **`length`** when `max_tokens` is reached first |
+| Echo + optional `FLOWGRID_SERVE_TOKENIZER` (no checkpoint) | Prompt side from tokenizer encode when available; completion from tokenizer ids for the echoed tail | Usually `stop` |
+| Pure echo (no tokenizer env) | **`~ceil(bytes/4)`** heuristic via `approx_tokens_from_text` for both sides | `stop` |
+
+Non-streaming and streaming responses share these rules so clients do not need separate heuristics when a tokenizer-backed path is active.
+
+### Checkpoint manifests (legacy vs current)
+
+`flowgrid-checkpoint` writes **`manifest_version`** and a **`b3:`**-prefixed **`fingerprint`** that includes the on-disk `model.bin` digest. Loading an older `manifest.json` **without** `manifest_version` or with a **non-`b3:`** fingerprint logs a **`tracing::warn`** and still loads; you should **re-save** the directory with current tooling so fingerprints and schema version are unambiguous. Breaking manifest layout changes will bump `manifest_version` and be called out in release notes.
 
 ## CI
 

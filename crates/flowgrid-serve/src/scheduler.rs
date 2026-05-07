@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::completion::{CompletionMeta, PlainOutput, StreamPart};
 use crate::engine::{serve_sampling_from_env, serve_seed_from_env, LocalLlm};
 
 #[derive(Clone)]
@@ -16,12 +17,12 @@ enum SchedulerReq {
     Plain {
         prompt: String,
         max_new: usize,
-        respond: mpsc::Sender<Result<String>>,
+        respond: mpsc::Sender<Result<PlainOutput>>,
     },
     Stream {
         prompt: String,
         max_new: usize,
-        chunk_tx: mpsc::Sender<Result<String>>,
+        chunk_tx: tokio::sync::mpsc::Sender<Result<StreamPart, anyhow::Error>>,
     },
 }
 
@@ -52,9 +53,9 @@ impl Scheduler {
         tokenizer: Option<FgTokenizer>,
         timeout_ms: u64,
     ) {
-        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let _timeout = Duration::from_millis(timeout_ms.max(1));
         while let Ok(req) = req_rx.recv() {
-            let deadline = Instant::now() + timeout;
+            let deadline = Instant::now() + _timeout;
             let deadline = Some(deadline);
             match req {
                 SchedulerReq::Plain {
@@ -80,63 +81,25 @@ impl Scheduler {
                             seed,
                             deadline,
                             |piece| {
-                                let chunk = serde_json::json!({
-                                    "object": "text.delta",
-                                    "delta": piece,
-                                })
-                                .to_string();
-                                let _ = chunk_tx.send(Ok(chunk));
+                                let _ = chunk_tx.blocking_send(Ok(StreamPart::Delta(piece.to_string())));
                             },
                         );
-                        if let Err(e) = r {
-                            let _ = chunk_tx.send(Err(anyhow!("{e}")));
+                        match r {
+                            Ok(meta) => {
+                                let _ = chunk_tx.blocking_send(Ok(StreamPart::Done(meta)));
+                            }
+                            Err(e) => {
+                                let _ = chunk_tx.blocking_send(Err(e));
+                            }
                         }
                     } else {
-                        let r = Self::echo_fallback_timed(
-                            tokenizer.as_ref(),
-                            &prompt,
-                            max_new,
-                            deadline,
-                        );
-                        let chunk = serde_json::json!({
-                            "object": "text.delta",
-                            "delta": r,
-                        })
-                        .to_string();
-                        let _ = chunk_tx.send(Ok(chunk));
+                        let (text, meta) =
+                            Self::echo_fallback_timed(tokenizer.as_ref(), &prompt, max_new, deadline);
+                        let _ = chunk_tx.blocking_send(Ok(StreamPart::Delta(text)));
+                        let _ = chunk_tx.blocking_send(Ok(StreamPart::Done(meta)));
                     }
                 }
             }
-        }
-    }
-
-    /// Echo / tokenizer path bounded by the same deadline as LLM inference.
-    fn echo_fallback_timed(
-        tokenizer: Option<&FgTokenizer>,
-        prompt: &str,
-        max_new: usize,
-        deadline: Option<Instant>,
-    ) -> String {
-        if let Some(d) = deadline {
-            if Instant::now() > d {
-                return "inference timeout".to_string();
-            }
-        }
-        Self::echo_fallback(tokenizer, prompt, max_new)
-    }
-
-    fn echo_fallback(tokenizer: Option<&FgTokenizer>, prompt: &str, max_new: usize) -> String {
-        let max_new = max_new.max(1);
-        if let Some(tok) = tokenizer {
-            match tok.encode(prompt, true) {
-                Ok(ids) => {
-                    let start = ids.len().saturating_sub(max_new);
-                    tok.decode(&ids[start..], true).unwrap_or_default()
-                }
-                Err(_) => format!("echo: {}", prompt.chars().take(max_new).collect::<String>()),
-            }
-        } else {
-            format!("echo: {}", prompt.chars().take(max_new).collect::<String>())
         }
     }
 
@@ -146,75 +109,106 @@ impl Scheduler {
         prompt: &str,
         max_new: usize,
         deadline: Option<Instant>,
-    ) -> Result<String> {
-        let max_new = max_new.max(1);
+    ) -> Result<PlainOutput> {
         if let Some(engine) = llm {
             let sampling = serve_sampling_from_env();
             let seed = serve_seed_from_env();
-            engine
-                .complete(prompt, max_new, sampling, seed, deadline)
-                .map_err(|e| anyhow!("{e}"))
-        } else if let Some(tok) = tokenizer {
-            if let Some(d) = deadline {
-                if Instant::now() > d {
-                    return Err(anyhow!("inference timeout"));
-                }
+            let (text, meta) = engine.complete(
+                prompt,
+                max_new.max(1),
+                sampling,
+                seed,
+                deadline,
+            )?;
+            return Ok(PlainOutput { text, meta });
+        }
+        let (text, meta) = Self::echo_fallback_timed(tokenizer, prompt, max_new, deadline);
+        Ok(PlainOutput { text, meta })
+    }
+
+    fn echo_fallback_timed(
+        tokenizer: Option<&FgTokenizer>,
+        prompt: &str,
+        max_new: usize,
+        deadline: Option<Instant>,
+    ) -> (String, CompletionMeta) {
+        if let Some(d) = deadline {
+            if Instant::now() > d {
+                let msg = "inference timeout".to_string();
+                let meta = CompletionMeta::heuristic_echo(prompt, &msg, "stop");
+                return (msg, meta);
             }
-            let ids = tok
-                .encode(prompt, true)
-                .map_err(|e| anyhow!("tokenize: {e}"))?;
-            if let Some(d) = deadline {
-                if Instant::now() > d {
-                    return Err(anyhow!("inference timeout"));
+        }
+        Self::echo_fallback(tokenizer, prompt, max_new)
+    }
+
+    fn echo_fallback(
+        tokenizer: Option<&FgTokenizer>,
+        prompt: &str,
+        max_new: usize,
+    ) -> (String, CompletionMeta) {
+        let max_new = max_new.max(1);
+        match tokenizer {
+            Some(tok) => match tok.encode(prompt, true) {
+                Ok(ids) => {
+                    let start = ids.len().saturating_sub(max_new);
+                    let slice = &ids[start..];
+                    let body = tok.decode(slice, true).unwrap_or_default();
+                    let text = format!("echo: {body}");
+                    let meta = CompletionMeta {
+                        prompt_tokens: ids.len() as u32,
+                        completion_tokens: slice.len() as u32,
+                        finish_reason: "stop",
+                    };
+                    (text, meta)
                 }
+                Err(_) => {
+                    let echo_body = prompt.chars().take(max_new).collect::<String>();
+                    let text = format!("echo: {echo_body}");
+                    let meta = CompletionMeta::heuristic_echo(prompt, &text, "stop");
+                    (text, meta)
+                }
+            },
+            None => {
+                let echo_body = prompt.chars().take(max_new).collect::<String>();
+                let text = format!("echo: {echo_body}");
+                let meta = CompletionMeta::heuristic_echo(prompt, &text, "stop");
+                (text, meta)
             }
-            let start = ids.len().saturating_sub(max_new);
-            tok.decode(&ids[start..], true)
-                .map_err(|e| anyhow!("decode: {e}"))
-        } else {
-            Ok(format!(
-                "{}{}",
-                "echo: ",
-                prompt.chars().take(max_new).collect::<String>()
-            ))
         }
     }
 
-    pub async fn submit_plain(&self, prompt_text: String, max_new: usize) -> Result<String> {
-        let (tx, rx) = mpsc::channel::<Result<String>>();
+    pub async fn submit_plain(&self, prompt: String, max_new: usize) -> Result<PlainOutput> {
+        let (tx, rx) = std::sync::mpsc::channel();
         self.req_tx
             .send(SchedulerReq::Plain {
-                prompt: prompt_text,
+                prompt,
                 max_new,
                 respond: tx,
             })
             .map_err(|_| anyhow!("scheduler queue closed"))?;
-        tokio::task::spawn_blocking(move || rx.recv().map_err(|_| anyhow!("worker died"))?)
+        let recv_result = tokio::task::spawn_blocking(move || rx.recv())
             .await
-            .map_err(|_| anyhow!("blocking join"))?
+            .map_err(|e| anyhow!(e.to_string()))?;
+        match recv_result {
+            Ok(plain_result) => plain_result,
+            Err(_) => Err(anyhow!("scheduler dropped response")),
+        }
     }
 
     pub async fn submit_stream(
         &self,
-        prompt_text: String,
+        prompt: String,
         max_new: usize,
-    ) -> Result<tokio::sync::mpsc::Receiver<Result<String>>> {
-        let (sync_tx, sync_rx) = mpsc::channel::<Result<String>>();
+    ) -> Result<tokio::sync::mpsc::Receiver<Result<StreamPart, anyhow::Error>>> {
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(64);
         self.req_tx
             .send(SchedulerReq::Stream {
-                prompt: prompt_text,
+                prompt,
                 max_new,
-                chunk_tx: sync_tx,
+                chunk_tx,
             })
             .map_err(|_| anyhow!("scheduler queue closed"))?;
-        let (async_tx, async_rx) = tokio::sync::mpsc::channel(256);
-        tokio::task::spawn_blocking(move || {
-            for item in sync_rx {
-                if async_tx.blocking_send(item).is_err() {
-                    break;
-                }
-            }
-        });
-        Ok(async_rx)
+        Ok(chunk_rx)
     }
 }

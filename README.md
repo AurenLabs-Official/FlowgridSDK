@@ -10,7 +10,16 @@ Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.to
 
 ## Preview limits (LLM stack)
 
-The HTTP `flowgrid` crate is stable; local LLM crates are **preview**: checkpoint manifests may gain new fields; `flowgrid-serve` token counts in `usage` are **heuristic** (~bytes/4), not tiktoken-exact; HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see above).
+The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoint manifests may gain new fields. For **`flowgrid-serve`**, `usage` / `finish_reason` are **tokenizer-exact** when `FLOWGRID_SERVE_CHECKPOINT` (and manifest tokenizer) are used; pure echo without a tokenizer still uses the **byte heuristic** (~bytes/4). Details: [`docs/llm/overview.md`](docs/llm/overview.md). HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see below).
+
+### OpenAI-shaped server compatibility (`flowgrid-serve`)
+
+| OpenAI-style field | Behavior |
+|--------------------|----------|
+| `choices[].finish_reason` | `stop` (EOS / non-length-limited complete) or `length` (`max_tokens`) |
+| `usage.prompt_tokens` / `completion_tokens` | Exact counts from the runtime tokenizer when serving a checkpoint; otherwise approximate (echo path) |
+| Non-stream errors | JSON body `{ "error": { "message", "type", "code" } }` |
+| SSE errors | Same `error` object inside a terminal `data:` line before `[DONE]` |
 
 Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/api.md) (Messages, Batches, Models, beta namespaces), without using Python at runtime.
 

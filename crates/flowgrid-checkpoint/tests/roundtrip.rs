@@ -22,7 +22,7 @@ fn save_load_forward_matches() {
     };
     let model = cfg.init::<B>(&device);
     let dir = tempdir().unwrap();
-    save_nano_gpt_checkpoint(&model, dir.path(), &cfg, None).unwrap();
+    save_nano_gpt_checkpoint(&model, dir.path(), &cfg, None, None).unwrap();
     let m = load_manifest(dir.path()).unwrap();
     assert_eq!(m.manifest_version, 1);
     assert!(m.fingerprint.starts_with("b3:"));
@@ -40,4 +40,25 @@ fn save_load_forward_matches() {
     for (x, y) in a.iter().zip(b.iter()) {
         assert!((x - y).abs() < 1e-5, "{x} vs {y}");
     }
+}
+
+#[test]
+fn save_with_lora_sidecar_sets_manifest_fields() {
+    let device = burn_ndarray::NdArrayDevice::Cpu;
+    let cfg = NanoGptConfig {
+        vocab_size: 16,
+        block_size: 8,
+        n_layer: 1,
+        n_head: 2,
+        n_embd: 8,
+        dropout: 0.0,
+        use_rope: true,
+        rope_theta: 10_000.0,
+    };
+    let model = cfg.init::<B>(&device);
+    let dir = tempdir().unwrap();
+    save_nano_gpt_checkpoint(&model, dir.path(), &cfg, None, Some("lora.json")).unwrap();
+    let m = load_manifest(dir.path()).unwrap();
+    assert_eq!(m.lora.as_deref(), Some("lora.json"));
+    assert_eq!(m.lora_schema_version, Some(1));
 }

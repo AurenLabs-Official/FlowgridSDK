@@ -315,8 +315,14 @@ fn main() -> Result<()> {
                 println!("mean CE after Adam: {after:.4}");
                 if let Some(dir) = save {
                     let tok = tokenizer_eff.as_ref().map(|p| p.display().to_string());
-                    save_nano_gpt_checkpoint(&model, &dir, &cfg, tok)
-                        .with_context(|| format!("save checkpoint {}", dir.display()))?;
+                    save_nano_gpt_checkpoint(
+                        &model,
+                        &dir,
+                        &cfg,
+                        tok,
+                        lora_spec.as_ref().map(|_| "lora.json"),
+                    )
+                    .with_context(|| format!("save checkpoint {}", dir.display()))?;
                     if let Some(spec) = lora_spec.as_ref() {
                         save_lora_spec(&dir, spec)
                             .with_context(|| format!("save lora spec {}", dir.display()))?;
@@ -493,7 +499,7 @@ fn main() -> Result<()> {
             let (model, manifest) = load_nano_gpt_checkpoint::<InferBackend>(&load, &device)
                 .context("load base checkpoint")?;
             let cfg = manifest.to_nano_gpt_config();
-            save_nano_gpt_checkpoint(&model, &save, &cfg, None)
+            save_nano_gpt_checkpoint(&model, &save, &cfg, None, None)
                 .with_context(|| format!("save merged checkpoint {}", save.display()))?;
             println!("merged LoRA -> {}", save.display());
         }

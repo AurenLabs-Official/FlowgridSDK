@@ -62,6 +62,8 @@ jobs:
         run: cargo install cargo-deny --locked
       - name: cargo deny
         run: cargo deny check
+      - name: Note (reqwest)
+        run: echo "supply-chain includes HTTP client crates (e.g. reqwest) via flowgrid-ui; advisories are tracked in deny.toml"
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: cargo audit
@@ -74,7 +76,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.75
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (MSRV)
-        run: cargo check -p flowgrid --features full
+        run: |
+          cargo check -p flowgrid --features full
+          cargo check -p flowgrid-serve
+          cargo check -p flowgrid-ui
+          cargo check -p flowgrid-cli
 
   semver:
     runs-on: ubuntu-latest

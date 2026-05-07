@@ -33,7 +33,6 @@ async fn main() {
             None
         }
     };
-    let local_llm_loaded = llm.is_some();
     let scheduler = Scheduler::start(
         SchedulerConfig {
             queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
@@ -51,7 +50,6 @@ async fn main() {
         scheduler,
         auth: auth_cfg,
         rate: rate_state,
-        local_llm_loaded,
     });
     let app = build_app(state)
         .layer(RequestBodyLimitLayer::new(max_body))

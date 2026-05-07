@@ -7,13 +7,14 @@ use axum::Json;
 use bytes::Bytes;
 use futures::stream::{self, StreamExt};
 use serde_json::json;
-use std::io::{Error, ErrorKind};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::io::Error;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-use crate::openai_compat::{openai_error_response, responses_usage};
+use crate::completion::StreamPart;
+use crate::openai_compat::{
+    openai_error_response, openai_error_value, responses_usage_tokens,
+};
 use crate::sse;
 use crate::types::ResponsesReq;
 use crate::AppState;
@@ -54,11 +55,6 @@ pub async fn responses(
     }
     let text_in = flatten_input(&body.input);
     let max_new = body.max_tokens.unwrap_or(128).min(4096) as usize;
-    let finish_reason = if st.local_llm_loaded {
-        "length"
-    } else {
-        "stop"
-    };
 
     if body.stream == Some(true) {
         let rx = match st.scheduler.submit_stream(text_in.clone(), max_new).await {
@@ -76,46 +72,45 @@ pub async fn responses(
         let model = body.model.clone();
         let id_chunk = id.clone();
         let model_chunk = model.clone();
-        let chars_out = Arc::new(AtomicUsize::new(0));
-        let co = Arc::clone(&chars_out);
-        let mapped = ReceiverStream::new(rx).map(move |res| -> Result<Bytes, Error> {
-            let inner = res.map_err(|e| std::io::Error::other(e.to_string()))?;
-            let v: serde_json::Value =
-                serde_json::from_str(&inner).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-            let piece = v["delta"].as_str().unwrap_or("");
-            co.fetch_add(piece.chars().count(), Ordering::Relaxed);
-            let delta = json!({
-                "id": id_chunk,
-                "object": "response.output_text.delta",
-                "model": model_chunk,
-                "delta": piece
-            });
-            Ok(Bytes::from(sse::frame(&delta.to_string())))
-        });
-        let id_done = id.clone();
-        let model_done = model.clone();
-        let prompt_done = text_in.clone();
-        let fr = finish_reason;
-        let completed = stream::once(async move {
-            use crate::openai_compat::{approx_tokens_from_chars, approx_tokens_from_text};
-            let pt = approx_tokens_from_text(&prompt_done);
-            let ct = approx_tokens_from_chars(chars_out.load(Ordering::Relaxed));
-            let usage = json!({
-                "input_tokens": pt,
-                "output_tokens": ct,
-                "total_tokens": pt + ct
-            });
-            let evt = json!({
-                "id": id_done,
-                "object": "response.completed",
-                "model": model_done,
-                "status": "completed",
-                "finish_reason": fr,
-                "usage": usage,
-            });
-            Ok::<Bytes, Error>(Bytes::from(sse::frame(&evt.to_string())))
-        });
-        let stream = mapped.chain(completed).chain(stream::once(async move {
+        let mapped = ReceiverStream::new(rx).map(
+            move |item: Result<StreamPart, anyhow::Error>| -> Result<Bytes, Error> {
+                match item {
+                    Ok(StreamPart::Delta(piece)) => {
+                        let delta = json!({
+                            "id": id_chunk,
+                            "object": "response.output_text.delta",
+                            "model": model_chunk,
+                            "delta": piece
+                        });
+                        Ok(Bytes::from(sse::frame(&delta.to_string())))
+                    }
+                    Ok(StreamPart::Done(meta)) => {
+                        let usage = responses_usage_tokens(
+                            meta.prompt_tokens,
+                            meta.completion_tokens,
+                        );
+                        let evt = json!({
+                            "id": id_chunk,
+                            "object": "response.completed",
+                            "model": model_chunk,
+                            "status": "completed",
+                            "finish_reason": meta.finish_reason,
+                            "usage": usage,
+                        });
+                        Ok(Bytes::from(sse::frame(&evt.to_string())))
+                    }
+                    Err(e) => {
+                        let err = openai_error_value(
+                            "server_error",
+                            "inference_error",
+                            e.to_string(),
+                        );
+                        Ok(Bytes::from(sse::frame(&err.to_string())))
+                    }
+                }
+            },
+        );
+        let stream = mapped.chain(stream::once(async move {
             Ok::<Bytes, Error>(Bytes::from(sse::done()))
         }));
         let body = Body::from_stream(stream);
@@ -126,8 +121,8 @@ pub async fn responses(
             .into_response();
     }
 
-    let text = match st.scheduler.submit_plain(text_in.clone(), max_new).await {
-        Ok(s) => s,
+    let out = match st.scheduler.submit_plain(text_in.clone(), max_new).await {
+        Ok(o) => o,
         Err(e) => {
             return openai_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -144,9 +139,9 @@ pub async fn responses(
             "object": "response",
             "status": "completed",
             "model": body.model,
-            "output_text": text,
-            "finish_reason": finish_reason,
-            "usage": responses_usage(&text_in, &text),
+            "output_text": out.text,
+            "finish_reason": out.meta.finish_reason,
+            "usage": responses_usage_tokens(out.meta.prompt_tokens, out.meta.completion_tokens),
         })),
     )
         .into_response()

@@ -23,12 +23,21 @@ pub struct StartJobReq {
     pub command: Vec<String>,
 }
 
+/// Paths and defaults wired from `FLOWGRID_UI_*` environment variables.
+pub struct JobEnv<'a> {
+    pub train_tokens: &'a str,
+    pub prepare_input: &'a str,
+    pub eval_dataset: &'a str,
+    pub eval_load: &'a str,
+    pub generate_load: &'a str,
+    pub generate_prompt: &'a str,
+}
+
 /// Build argv for `tokio::process::Command` from a template or advanced `command`.
 pub fn resolve_job_argv(
     req: &StartJobReq,
     allow_advanced: bool,
-    train_tokens: &str,
-    prepare_input: &str,
+    env: &JobEnv<'_>,
 ) -> Result<Vec<String>, Cow<'static, str>> {
     if req.advanced {
         if !allow_advanced {
@@ -56,9 +65,9 @@ pub fn resolve_job_argv(
             "--".into(),
             "prepare".into(),
             "-i".into(),
-            prepare_input.into(),
+            env.prepare_input.into(),
             "-o".into(),
-            train_tokens.into(),
+            env.train_tokens.into(),
         ]),
         ("train-tiny", "train") => Ok(vec![
             "cargo".into(),
@@ -68,7 +77,7 @@ pub fn resolve_job_argv(
             "--".into(),
             "train".into(),
             "--tokens".into(),
-            train_tokens.into(),
+            env.train_tokens.into(),
             "--steps".into(),
             "8".into(),
             "--vocab".into(),
@@ -80,9 +89,58 @@ pub fn resolve_job_argv(
             "--embd".into(),
             "64".into(),
         ]),
-        ("prepare-readme", _) | ("train-tiny", _) => Err(Cow::Borrowed(
-            "template/kind mismatch: use prepare-readme with kind prepare, or train-tiny with kind train",
-        )),
+        ("eval-smoke", "eval") => {
+            if env.eval_dataset.is_empty() {
+                return Err(Cow::Borrowed(
+                    "set FLOWGRID_UI_EVAL_DATASET for template eval-smoke",
+                ));
+            }
+            let mut argv = vec![
+                "cargo".into(),
+                "run".into(),
+                "-p".into(),
+                "flowgrid-cli".into(),
+                "--".into(),
+                "eval".into(),
+                "--dataset".into(),
+                env.eval_dataset.into(),
+                "--block".into(),
+                "32".into(),
+                "--stride".into(),
+                "32".into(),
+            ];
+            if !env.eval_load.is_empty() {
+                argv.push("--load".into());
+                argv.push(env.eval_load.into());
+            }
+            Ok(argv)
+        }
+        ("generate-demo", "generate") => {
+            if env.generate_load.is_empty() {
+                return Err(Cow::Borrowed(
+                    "set FLOWGRID_UI_GENERATE_CHECKPOINT for template generate-demo",
+                ));
+            }
+            Ok(vec![
+                "cargo".into(),
+                "run".into(),
+                "-p".into(),
+                "flowgrid-cli".into(),
+                "--".into(),
+                "generate".into(),
+                "--prompt".into(),
+                env.generate_prompt.into(),
+                "--load".into(),
+                env.generate_load.into(),
+                "--max-new".into(),
+                "16".into(),
+            ])
+        }
+        ("prepare-readme", _) | ("train-tiny", _) | ("eval-smoke", _) | ("generate-demo", _) => {
+            Err(Cow::Borrowed(
+                "template/kind mismatch: prepare-readme+prepare, train-tiny+train, eval-smoke+eval, generate-demo+generate",
+            ))
+        }
         _ => Err(Cow::Owned(format!("unknown template '{name}'"))),
     }
 }

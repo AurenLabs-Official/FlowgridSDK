@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-07
+
+Preview-only **breaking** adjustments for the local LLM workspace crates (the stable `flowgrid` HTTP SDK is unchanged except as noted in docs).
+
+### Added
+
+- `flowgrid-serve`: `CompletionMeta` / streaming `StreamPart` with tokenizer-backed **`usage`** and **`finish_reason`** when a checkpoint is loaded; **`FLOWGRID_SERVE_EOS_ID`** override; SSE **`data:`** error objects before stream end on inference failures.
+- `flowgrid-checkpoint`: `load_manifest` warns on legacy manifests (missing `manifest_version` or non-`b3:` fingerprints); optional **`lora_schema_version`** and manifest **`lora`** sidecar pointer when saving with LoRA (`save_nano_gpt_checkpoint` gains `lora_sidecar: Option<&str>`).
+- `flowgrid-ui`: job templates **`eval-smoke`** / **`generate-demo`**; **`FLOWGRID_UI_JOB_ADMIN_KEY`** enforced on **`POST /api/jobs/start`** and **`POST /api/jobs/:id/stop`** only.
+
+### Changed
+
+- **`save_nano_gpt_checkpoint(..., tokenizer_path, lora_sidecar)`** — fourth parameter is now the LoRA sidecar relative path (e.g. `"lora.json"`), or `None`.
+
+### Documentation
+
+- README “OpenAI-shaped compat” table for `flowgrid-serve`; `docs/llm/overview.md` usage and manifest migration notes.
+
 ## [Unreleased]
 
 ### Added

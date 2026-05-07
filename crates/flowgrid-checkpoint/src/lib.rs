@@ -23,7 +23,11 @@ pub struct Manifest {
     pub n_head: usize,
     pub n_kv_head: Option<usize>,
     pub tokenizer_path: Option<String>,
+    /// Relative path under checkpoint dir for LoRA metadata (e.g. `lora.json`) when using adapter training.
     pub lora: Option<String>,
+    /// Schema version for sidecar referenced by [`Self::lora`] (e.g. `1` = `lora.json` + weights in `model.bin`).
+    #[serde(default)]
+    pub lora_schema_version: Option<u32>,
     /// Stable identity: BLAKE3 over config basis plus `model.bin` digest (see `save_nano_gpt_checkpoint`).
     /// Older manifests may use a human-readable `nanogpt-v…` string instead of `b3:…`.
     pub fingerprint: String,
@@ -95,6 +99,7 @@ impl Manifest {
             n_kv_head: None,
             tokenizer_path,
             lora: None,
+            lora_schema_version: None,
             fingerprint,
             use_rope: cfg.use_rope,
             rope_theta: cfg.rope_theta,
@@ -149,16 +154,33 @@ pub fn save_manifest(dir: impl AsRef<Path>, manifest: &Manifest) -> Result<()> {
 pub fn load_manifest(dir: impl AsRef<Path>) -> Result<Manifest> {
     let path = manifest_path(dir.as_ref());
     let body = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-    serde_json::from_slice(&body).context("parse manifest")
+    let v: serde_json::Value = serde_json::from_slice(&body).context("parse manifest json")?;
+    let has_manifest_version = v.get("manifest_version").is_some();
+    let m: Manifest = serde_json::from_value(v).context("decode manifest fields")?;
+    if !has_manifest_version {
+        tracing::warn!(
+            path = %path.display(),
+            "checkpoint manifest has no manifest_version field; treating as legacy. Re-save with current flowgrid-cli to write manifest_version and a b3 fingerprint."
+        );
+    }
+    if !m.fingerprint.starts_with("b3:") {
+        tracing::warn!(
+            path = %path.display(),
+            fingerprint = %m.fingerprint,
+            "checkpoint fingerprint is not b3-prefixed (content hash); legacy identity string. Re-save the checkpoint for a weight-inclusive BLAKE3 fingerprint."
+        );
+    }
+    Ok(m)
 }
 
-/// Save [`Manifest`] plus a Burn binary record of [`NanoGpt`] weights to `model.bin`.
 /// Writes `model.bin` first, then `manifest.json` with a fingerprint that includes the on-disk weights digest.
+/// `lora_sidecar` sets [`Manifest::lora`] and [`Manifest::lora_schema_version`] when non-empty (e.g. `"lora.json"`).
 pub fn save_nano_gpt_checkpoint<B: Backend>(
     model: &NanoGpt<B>,
     dir: impl AsRef<Path>,
     cfg: &NanoGptConfig,
     tokenizer_path: Option<String>,
+    lora_sidecar: Option<&str>,
 ) -> Result<()> {
     let dir = dir.as_ref();
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
@@ -171,7 +193,11 @@ pub fn save_nano_gpt_checkpoint<B: Backend>(
     let weights_bytes =
         std::fs::read(&path).with_context(|| format!("read back {}", path.display()))?;
     let digest = *blake3::hash(&weights_bytes).as_bytes();
-    let manifest = Manifest::from_nano_gpt_with_weights(cfg, tokenizer_path, &digest);
+    let mut manifest = Manifest::from_nano_gpt_with_weights(cfg, tokenizer_path, &digest);
+    if let Some(rel) = lora_sidecar {
+        manifest.lora = Some(rel.to_string());
+        manifest.lora_schema_version = Some(1);
+    }
     save_manifest(dir, &manifest)?;
     Ok(())
 }
@@ -223,6 +249,31 @@ pub fn load_lora_spec(dir: impl AsRef<Path>) -> Result<LoraSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_manifest_warns_but_loads_legacy_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let json = r#"{
+            "arch": "nanogpt",
+            "dtype": "f32",
+            "vocab_size": 10,
+            "block_size": 8,
+            "hidden": 16,
+            "n_layer": 1,
+            "n_head": 2,
+            "n_kv_head": null,
+            "tokenizer_path": null,
+            "lora": null,
+            "fingerprint": "legacy-no-b3",
+            "use_rope": true,
+            "rope_theta": 10000.0
+        }"#;
+        let path = dir.path().join("manifest.json");
+        std::fs::write(&path, json).unwrap();
+        let m = load_manifest(dir.path()).unwrap();
+        assert_eq!(m.manifest_version, 1);
+        assert_eq!(m.fingerprint, "legacy-no-b3");
+    }
 
     #[test]
     fn manifest_deserializes_without_manifest_version() {

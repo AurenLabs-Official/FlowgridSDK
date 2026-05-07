@@ -1,4 +1,6 @@
-//! OpenAI-adjacent JSON helpers (token counts are **heuristic**, not tiktoken-exact).
+//! OpenAI-adjacent JSON helpers. When a tokenizer is available, [`crate::engine::LocalLlm`] reports
+//! exact prompt/generation token counts; echo paths without a checkpoint still use the **byte
+//! heuristic** (~4 chars per token) via [`approx_tokens_from_text`].
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -35,21 +37,31 @@ pub fn openai_error_response(
 }
 
 pub fn chat_usage(prompt: &str, completion: &str) -> Value {
-    let prompt_tokens = approx_tokens_from_text(prompt);
-    let completion_tokens = approx_tokens_from_text(completion);
+    chat_usage_tokens(
+        approx_tokens_from_text(prompt),
+        approx_tokens_from_text(completion),
+    )
+}
+
+pub fn chat_usage_tokens(prompt_tokens: u32, completion_tokens: u32) -> Value {
     json!({
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "total_tokens": prompt_tokens.saturating_add(completion_tokens),
     })
 }
 
 pub fn responses_usage(prompt_flat: &str, output: &str) -> Value {
-    let input_tokens = approx_tokens_from_text(prompt_flat);
-    let output_tokens = approx_tokens_from_text(output);
+    responses_usage_tokens(
+        approx_tokens_from_text(prompt_flat),
+        approx_tokens_from_text(output),
+    )
+}
+
+pub fn responses_usage_tokens(input_tokens: u32, output_tokens: u32) -> Value {
     json!({
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "total_tokens": input_tokens + output_tokens,
+        "total_tokens": input_tokens.saturating_add(output_tokens),
     })
 }

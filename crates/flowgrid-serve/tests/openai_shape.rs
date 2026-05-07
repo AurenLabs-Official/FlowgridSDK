@@ -25,7 +25,6 @@ fn test_state() -> Arc<AppState> {
             keys: vec![],
         },
         rate: RateLimitState::new(9999),
-        local_llm_loaded: false,
     })
 }
 
@@ -71,7 +70,6 @@ async fn unauthorized_returns_openai_error_json() {
             keys: vec!["secret".to_string()],
         },
         rate: RateLimitState::new(9999),
-        local_llm_loaded: false,
     });
     let app = build_app(state);
     let body = serde_json::json!({

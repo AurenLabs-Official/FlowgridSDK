@@ -24,11 +24,15 @@ use tokio::process::Command;
 struct UiState {
     db: Mutex<Connection>,
     children: Mutex<HashMap<String, u32>>,
-    /// Optional bearer key required on mutating routes (e.g. `/api/jobs/start`).
+    /// Optional bearer key required on mutating job routes only (`POST /api/jobs/start`, `POST /api/jobs/:id/stop`).
     job_admin_key: Option<String>,
     allow_advanced_jobs: bool,
     train_tokens_path: String,
     prepare_input_path: String,
+    eval_dataset_path: String,
+    eval_checkpoint_path: String,
+    generate_checkpoint_path: String,
+    generate_prompt: String,
     serve_url: Option<String>,
     serve_api_key: Option<String>,
     http: reqwest::Client,
@@ -66,9 +70,11 @@ fn init_db(path: &PathBuf) -> Result<Connection> {
 async fn index() -> impl IntoResponse {
     let body = r#"<!doctype html><meta charset="utf-8"><title>flowgrid-ui</title>
 <h1>Run Control Center</h1>
-<p>API: <code>/api/jobs/start</code> with JSON <code>{"kind":"prepare","template":"prepare-readme"}</code>
-or <code>{"kind":"train","template":"train-tiny"}</code>. Free-form <code>command</code> requires
-<code>advanced: true</code> and server env <code>FLOWGRID_UI_ALLOW_ADVANCED=1</code>.</p>
+<p>API: <code>/api/jobs/start</code> with JSON <code>{"kind":"prepare","template":"prepare-readme"}</code>,
+<code>{"kind":"train","template":"train-tiny"}</code>, <code>{"kind":"eval","template":"eval-smoke"}</code>,
+or <code>{"kind":"generate","template":"generate-demo"}</code> (see <code>FLOWGRID_UI_EVAL_*</code> / <code>FLOWGRID_UI_GENERATE_*</code>).
+Free-form <code>command</code> requires <code>advanced: true</code> and <code>FLOWGRID_UI_ALLOW_ADVANCED=1</code>.</p>
+<p>When set, <code>FLOWGRID_UI_JOB_ADMIN_KEY</code> is required only for <strong>POST</strong> job endpoints; read-only GET routes are not gated.</p>
 <p>Proxy to the LLM server: <code>POST /api/llm/v1/chat/completions</code> when <code>FLOWGRID_UI_SERVE_URL</code> is set
 (use <code>FLOWGRID_UI_SERVE_API_KEY</code> for outbound auth).</p>"#;
     (
@@ -174,8 +180,14 @@ async fn api_start_job(
     let argv = match jobs::resolve_job_argv(
         &req,
         st.allow_advanced_jobs,
-        &st.train_tokens_path,
-        &st.prepare_input_path,
+        &jobs::JobEnv {
+            train_tokens: &st.train_tokens_path,
+            prepare_input: &st.prepare_input_path,
+            eval_dataset: &st.eval_dataset_path,
+            eval_load: &st.eval_checkpoint_path,
+            generate_load: &st.generate_checkpoint_path,
+            generate_prompt: &st.generate_prompt,
+        },
     ) {
         Ok(v) => v,
         Err(e) => {
@@ -228,7 +240,18 @@ async fn api_start_job(
     (StatusCode::OK, Json(json!({ "id": id, "pid": pid }))).into_response()
 }
 
-async fn api_stop_job(State(st): State<Arc<UiState>>, Path(id): Path<String>) -> impl IntoResponse {
+async fn api_stop_job(
+    State(st): State<Arc<UiState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if let Err(code) = require_job_admin(&headers, st.job_admin_key.as_ref()) {
+        return (
+            code,
+            Json(json!({ "error": "missing or invalid FLOWGRID_UI_JOB_ADMIN_KEY" })),
+        )
+            .into_response();
+    }
     let pid = st.children.lock().expect("children").remove(&id);
     if let Some(pid) = pid {
         #[cfg(windows)]
@@ -253,7 +276,7 @@ async fn api_stop_job(State(st): State<Arc<UiState>>, Path(id): Path<String>) ->
         "UPDATE jobs SET status = 'stopped' WHERE id = ?1",
         rusqlite::params![id],
     );
-    (StatusCode::OK, Json(json!({ "ok": true })))
+    (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
 }
 
 async fn api_job_log(Path(id): Path<String>) -> impl IntoResponse {
@@ -367,6 +390,14 @@ async fn main() -> Result<()> {
         std::env::var("FLOWGRID_UI_TRAIN_TOKENS").unwrap_or_else(|_| "target/readme.bin".into());
     let prepare_input_path =
         std::env::var("FLOWGRID_UI_PREPARE_INPUT").unwrap_or_else(|_| "README.md".into());
+    let eval_dataset_path =
+        std::env::var("FLOWGRID_UI_EVAL_DATASET").unwrap_or_else(|_| String::new());
+    let eval_checkpoint_path =
+        std::env::var("FLOWGRID_UI_EVAL_CHECKPOINT").unwrap_or_else(|_| String::new());
+    let generate_checkpoint_path =
+        std::env::var("FLOWGRID_UI_GENERATE_CHECKPOINT").unwrap_or_else(|_| String::new());
+    let generate_prompt = std::env::var("FLOWGRID_UI_GENERATE_PROMPT")
+        .unwrap_or_else(|_| "Hello from flowgrid-ui".into());
     let serve_url = std::env::var("FLOWGRID_UI_SERVE_URL").ok();
     let serve_api_key = std::env::var("FLOWGRID_UI_SERVE_API_KEY").ok();
     let http = reqwest::Client::builder()
@@ -380,6 +411,10 @@ async fn main() -> Result<()> {
         allow_advanced_jobs,
         train_tokens_path,
         prepare_input_path,
+        eval_dataset_path,
+        eval_checkpoint_path,
+        generate_checkpoint_path,
+        generate_prompt,
         serve_url,
         serve_api_key,
         http,

@@ -14,6 +14,8 @@ use flowgrid_tokenizer::{DecoderState, FgTokenizer};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use crate::completion::CompletionMeta;
+
 pub type InferB = NdArray<f32>;
 
 /// Loaded local decoder for OpenAI-shaped completions.
@@ -50,6 +52,13 @@ impl LocalLlm {
         Ok(Some(llm))
     }
 
+    fn eos_id(&self) -> Option<u32> {
+        std::env::var("FLOWGRID_SERVE_EOS_ID")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .or_else(|| self.tokenizer.eos_id())
+    }
+
     pub fn complete(
         &self,
         prompt: &str,
@@ -57,12 +66,12 @@ impl LocalLlm {
         sampling: Sampling,
         seed: u64,
         deadline: Option<Instant>,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<(String, CompletionMeta)> {
         let mut out = String::new();
-        self.complete_stream(prompt, max_new, sampling, seed, deadline, |piece| {
+        let meta = self.complete_stream(prompt, max_new, sampling, seed, deadline, |piece| {
             out.push_str(piece)
         })?;
-        Ok(out)
+        Ok((out, meta))
     }
 
     /// Invokes `on_piece` with incremental decoded UTF-8 (tokenizer streaming).
@@ -74,7 +83,7 @@ impl LocalLlm {
         seed: u64,
         deadline: Option<Instant>,
         mut on_piece: F,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<CompletionMeta> {
         let check_deadline = || -> anyhow::Result<()> {
             if let Some(d) = deadline {
                 if Instant::now() > d {
@@ -84,6 +93,9 @@ impl LocalLlm {
             Ok(())
         };
         check_deadline()?;
+        let eos = self.eos_id();
+        let is_eos = |id: i32| eos.is_some_and(|e| e == id as u32);
+
         let mut rng = StdRng::seed_from_u64(seed);
         let mut ids: Vec<i32> = self
             .tokenizer
@@ -99,6 +111,7 @@ impl LocalLlm {
         while ids.len() > bs {
             ids.remove(0);
         }
+        let prompt_tokens = ids.len() as u32;
         let mut caches: Vec<KvCache<InferB>> = (0..self.model.n_layer())
             .map(|_| KvCache::empty())
             .collect();
@@ -109,18 +122,37 @@ impl LocalLlm {
         let logits = self.model.forward_step(inp, Some(&mut caches));
         let mut next = sample_from_last_logits(&logits, sampling, &mut rng);
         let mut decode_state = DecoderState::default();
+        let max_gen = max_new.max(1);
+        let mut completion_tokens: u32 = 0;
+
+        completion_tokens += 1;
+        if is_eos(next) {
+            return Ok(CompletionMeta {
+                prompt_tokens,
+                completion_tokens,
+                finish_reason: "stop",
+            });
+        }
         on_piece(
             &self
                 .tokenizer
                 .decode_streaming(&mut decode_state, next as u32)
                 .unwrap_or_default(),
         );
-        let n_gen = max_new.max(1);
-        for _ in 1..n_gen {
+
+        for _ in 1..max_gen {
             check_deadline()?;
             let t = Tensor::<InferB, 1, Int>::from_ints([next], &self.device).reshape([1, 1]);
             let logits = self.model.forward_step(t, Some(&mut caches));
             next = sample_from_last_logits(&logits, sampling, &mut rng);
+            completion_tokens += 1;
+            if is_eos(next) {
+                return Ok(CompletionMeta {
+                    prompt_tokens,
+                    completion_tokens,
+                    finish_reason: "stop",
+                });
+            }
             on_piece(
                 &self
                     .tokenizer
@@ -128,7 +160,12 @@ impl LocalLlm {
                     .unwrap_or_default(),
             );
         }
-        Ok(())
+
+        Ok(CompletionMeta {
+            prompt_tokens,
+            completion_tokens,
+            finish_reason: "length",
+        })
     }
 }
 
