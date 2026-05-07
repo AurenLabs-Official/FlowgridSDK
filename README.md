@@ -10,7 +10,7 @@ Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.to
 
 ## Preview limits (LLM stack)
 
-The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoint manifests may gain new fields. For **`flowgrid-serve`**, `usage` / `finish_reason` are **tokenizer-exact** when `FLOWGRID_SERVE_CHECKPOINT` (and manifest tokenizer) are used; pure echo without a tokenizer still uses the **byte heuristic** (~bytes/4). Details: [`docs/llm/overview.md`](docs/llm/overview.md). HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see below).
+The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoint manifests may gain new fields. For **`flowgrid-serve`**, `usage` / `finish_reason` are **tokenizer-exact** when `FLOWGRID_SERVE_CHECKPOINT` (and manifest tokenizer) is used; pure echo without a tokenizer still uses the **byte heuristic** (~bytes/4). Details: [`docs/llm/overview.md`](docs/llm/overview.md). Optional **GPU** (Burn `Wgpu`): build `flowgrid-cli` / `flowgrid-serve` with **`--features gpu-wgpu`** and set **`FLOWGRID_DEVICE`** (see overview). HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see below).
 
 ### OpenAI-shaped server compatibility (`flowgrid-serve`)
 

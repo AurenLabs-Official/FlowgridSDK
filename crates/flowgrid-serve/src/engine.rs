@@ -1,10 +1,9 @@
-//! CPU `NanoGpt` inference (checkpoint + tokenizer) for the scheduler.
+//! Local `NanoGpt` inference (checkpoint + tokenizer) for the scheduler.
 
 use std::path::Path;
 use std::time::Instant;
 
 use anyhow::Context;
-use burn::backend::NdArray;
 use burn::tensor::{Int, Tensor};
 use flowgrid_checkpoint::{load_nano_gpt_checkpoint, resolve_tokenizer_path};
 use flowgrid_model::cache::KvCache;
@@ -16,18 +15,18 @@ use rand::SeedableRng;
 
 use crate::completion::CompletionMeta;
 
-pub type InferB = NdArray<f32>;
+pub use crate::backend::{infer_device, InferB, InferDevice};
 
 /// Loaded local decoder for OpenAI-shaped completions.
 pub struct LocalLlm {
     pub model: NanoGpt<InferB>,
     pub tokenizer: FgTokenizer,
-    pub device: burn_ndarray::NdArrayDevice,
+    pub device: InferDevice,
 }
 
 impl LocalLlm {
     pub fn load_checkpoint(dir: &Path) -> anyhow::Result<Self> {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let device = crate::backend::infer_device();
         let (model, _manifest) =
             load_nano_gpt_checkpoint::<InferB>(dir, &device).context("load NanoGpt checkpoint")?;
         let tok_path = resolve_tokenizer_path(dir)

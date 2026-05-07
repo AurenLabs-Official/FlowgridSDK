@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "OpenAI-shaped HTTP inference server for Flowgrid LLM."
 
+[features]
+default = []
+gpu-wgpu = ["burn/wgpu", "dep:burn-wgpu"]
+
 [lib]
 name = "flowgrid_serve"
 path = "src/lib.rs"
@@ -15,6 +19,7 @@ name = "flowgrid-serve"
 path = "src/main.rs"
 
 [dependencies]
+flowgrid-device = { path = "../flowgrid-device" }
 axum.workspace = true
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -28,8 +33,9 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
-burn.workspace = true
-burn-ndarray.workspace = true
+burn = { workspace = true }
+burn-wgpu = { version = "0.13.2", optional = true }
+burn-ndarray = { workspace = true }
 bytes = "1"
 rand = "0.8"
 flowgrid-model = { path = "../flowgrid-model" }

@@ -7,11 +7,16 @@ license.workspace = true
 description = "CLI for Flowgrid LLM (train, generate, serve shim)."
 default-run = "flowgrid-llm"
 
+[features]
+default = []
+gpu-wgpu = ["burn/wgpu", "dep:burn-wgpu", "flowgrid-tensor/wgpu"]
+
 [[bin]]
 name = "flowgrid-llm"
 path = "src/main.rs"
 
 [dependencies]
+flowgrid-device = { path = "../flowgrid-device" }
 flowgrid-tensor = { path = "../flowgrid-tensor" }
 flowgrid-model = { path = "../flowgrid-model" }
 flowgrid-train = { path = "../flowgrid-train" }
@@ -20,6 +25,7 @@ flowgrid-data = { path = "../flowgrid-data" }
 flowgrid-checkpoint = { path = "../flowgrid-checkpoint" }
 flowgrid-tokenizer = { path = "../flowgrid-tokenizer" }
 burn = { workspace = true }
+burn-wgpu = { version = "0.13.2", optional = true }
 burn-ndarray = { workspace = true }
 clap.workspace = true
 serde.workspace = true

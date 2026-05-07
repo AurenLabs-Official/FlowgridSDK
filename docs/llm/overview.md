@@ -16,8 +16,8 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 | **`flowgrid-serve`** real decode when `FLOWGRID_SERVE_CHECKPOINT` set; SSE one event per streamed token; tokenizer from manifest | **Works** (preview) |
 | **Studio UI** job start with **kind + command allowlist** | **Partial** |
 | **LoRA** `LoraLinear` forward + `merged_linear`; `attach_lora` for `NanoGpt` (wraps targeted projections; `gate` reserved for non–nano-GPT arch) | **Works** (preview) |
-| **Llama / Mistral / Qwen** | **Preview**: `expected_keys` + `validate_*_keys` only; no full tensor map into `NanoGpt` yet |
-| **GPU backends** | **Feature-gated** on `flowgrid-tensor` (`wgpu`, `cuda`, `tch`, `metal`, `candle`) — manual benches first |
+| **Llama / Mistral / Qwen** | **Preview**: key validation + **staged** `decode_self_attn_q_proj` (F32 tensor bytes → rank-2 tensor) for Llama/Mistral `q_proj`; full map into `NanoGpt` still WIP |
+| **GPU backends** | **Optional** Cargo feature **`gpu-wgpu`** on `flowgrid-cli` / `flowgrid-serve` (Burn `Wgpu`); env **`FLOWGRID_DEVICE`** parsed by [`flowgrid-device`](crates/flowgrid-device) (`cpu`, `wgpu`, `wgpu:0`, …). Default builds stay **NdArray CPU** (MSRV-friendly). |
 | **ROME/MEMIT** (`flowgrid-edit`) | **Experimental** — gated until checkpoint + LoRA path is stable |
 
 ## Workspace crates
@@ -25,7 +25,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 | Crate | Role |
 |-------|------|
 | `flowgrid` | **Stable** HTTP SDK (unchanged for LLM work) |
-| `flowgrid-tensor` | Burn prelude + optional GPU features |
+| `flowgrid-device` | `FLOWGRID_DEVICE` parsing (no Burn dependency) |
 | `flowgrid-tokenizer` | Hugging Face `tokenizer.json` |
 | `flowgrid-data` | mmap token blobs (`u32` LE) |
 | `flowgrid-model` | `NanoGpt`, cache, RoPE, sampler, HF loaders (GPT-2 + key validation stubs) |
@@ -45,6 +45,18 @@ cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
 cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 32
 cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16
 ```
+
+### `FLOWGRID_DEVICE` (CLI + serve)
+
+[`flowgrid-device`](crates/flowgrid-device) reads **`FLOWGRID_DEVICE`** (default `cpu`). GPU inference/training requires building with **`--features gpu-wgpu`**:
+
+```bash
+cargo build -p flowgrid-cli --features gpu-wgpu
+cargo run -p flowgrid-cli --features gpu-wgpu -- train --tokens data.bin --steps 8
+# e.g. FLOWGRID_DEVICE=wgpu  or  wgpu:0  or  integrated:0
+```
+
+Same for **`flowgrid-serve`**: `cargo build -p flowgrid-serve --features gpu-wgpu`. Without the feature, a GPU request in the env logs a **warning** and execution stays on CPU.
 
 ### Eval quality gate
 

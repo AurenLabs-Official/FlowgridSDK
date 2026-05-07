@@ -6,6 +6,7 @@ use axum::Router;
 use std::sync::Arc;
 
 mod auth;
+mod backend;
 pub mod completion;
 pub mod engine;
 pub mod error;

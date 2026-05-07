@@ -1,13 +1,8 @@
-//! Flowgrid LLM CLI — byte-level toy LM on **CPU** (`NdArray` + optional `Autodiff`).
-//!
-//! Example:
-//! ```text
-//! flowgrid-llm prepare -i README.md -o data/readme.bin
-//! flowgrid-llm train --tokens data/readme.bin --steps 16
-//! ```
+//! Flowgrid LLM CLI — **CPU NdArray** by default; optional **`gpu-wgpu`** for Burn Wgpu (see `FLOWGRID_DEVICE`).
+
+mod backend;
 
 use anyhow::{Context, Result};
-use burn::backend::{Autodiff, NdArray};
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::tensor::{Int, Tensor};
 use clap::{Parser, Subcommand};
@@ -27,8 +22,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::path::PathBuf;
 
-type DiffBackend = Autodiff<NdArray<f32>>;
-type InferBackend = NdArray<f32>;
+use backend::{DiffBackend, InferBackend};
 
 #[derive(Parser, Debug)]
 #[command(name = "flowgrid-llm")]
@@ -152,14 +146,17 @@ enum Cmd {
     },
 }
 
-fn cpu_device() -> burn_ndarray::NdArrayDevice {
-    burn_ndarray::NdArrayDevice::Cpu
-}
-
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    #[cfg(not(feature = "gpu-wgpu"))]
+    if flowgrid_device::gpu_requested_in_env() {
+        tracing::warn!(
+            "FLOWGRID_DEVICE requests GPU; rebuild with `cargo build -p flowgrid-cli --features gpu-wgpu` to enable Burn Wgpu"
+        );
+    }
 
     let cli = Cli::parse();
     match cli.cmd {
@@ -208,7 +205,7 @@ fn main() -> Result<()> {
             lora_alpha,
         } => {
             let mmap = TokenMmap::open(&tokens).context("mmap tokens")?;
-            let device = cpu_device();
+            let device = backend::infer_device();
             let tokenizer_eff = if tokenizer.is_none() {
                 resume
                     .as_ref()
@@ -344,7 +341,7 @@ fn main() -> Result<()> {
             top_k,
             seed,
         } => {
-            let device = cpu_device();
+            let device = backend::infer_device();
             let tokenizer_eff = if tokenizer.is_none() {
                 load.as_ref()
                     .and_then(|d| resolve_tokenizer_path(d).ok().flatten())
@@ -453,7 +450,7 @@ fn main() -> Result<()> {
             baseline_ppl,
             max_regression_pct,
         } => {
-            let device = cpu_device();
+            let device = backend::infer_device();
             let tokenizer_eff = load
                 .as_ref()
                 .and_then(|d| resolve_tokenizer_path(d).ok().flatten());
@@ -495,18 +492,12 @@ fn main() -> Result<()> {
         }
         Cmd::MergeLora { load, save } => {
             let _spec = load_lora_spec(&load).context("load lora spec")?;
-            let device = cpu_device();
+            let device = backend::infer_device();
             let (model, manifest) = load_nano_gpt_checkpoint::<InferBackend>(&load, &device)
                 .context("load base checkpoint")?;
             let cfg = manifest.to_nano_gpt_config();
             let model = model.merge_lora_adapters(&device);
-            save_nano_gpt_checkpoint(
-                &model,
-                &save,
-                &cfg,
-                manifest.tokenizer_path.clone(),
-                None,
-            )
+            save_nano_gpt_checkpoint(&model, &save, &cfg, manifest.tokenizer_path.clone(), None)
                 .with_context(|| format!("save merged checkpoint {}", save.display()))?;
             println!("merged LoRA -> {}", save.display());
         }

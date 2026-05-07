@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/flowgrid",
+    "crates/flowgrid-device",
     "crates/flowgrid-tensor",
     "crates/flowgrid-tokenizer",
     "crates/flowgrid-data",

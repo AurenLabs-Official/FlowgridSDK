@@ -89,11 +89,8 @@ pub async fn chat_completions(
                         Ok(Bytes::from(sse::frame(&chunk.to_string())))
                     }
                     Err(e) => {
-                        let err = openai_error_value(
-                            "server_error",
-                            "inference_error",
-                            e.to_string(),
-                        );
+                        let err =
+                            openai_error_value("server_error", "inference_error", e.to_string());
                         Ok(Bytes::from(sse::frame(&err.to_string())))
                     }
                 }

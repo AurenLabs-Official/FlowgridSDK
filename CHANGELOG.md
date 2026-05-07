@@ -13,7 +13,9 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 
 - `flowgrid-serve`: `CompletionMeta` / streaming `StreamPart` with tokenizer-backed **`usage`** and **`finish_reason`** when a checkpoint is loaded; **`FLOWGRID_SERVE_EOS_ID`** override; SSE **`data:`** error objects before stream end on inference failures.
 - `flowgrid-checkpoint`: `load_manifest` warns on legacy manifests (missing `manifest_version` or non-`b3:` fingerprints); optional **`lora_schema_version`** and manifest **`lora`** sidecar pointer when saving with LoRA (`save_nano_gpt_checkpoint` gains `lora_sidecar: Option<&str>`).
-- `flowgrid-ui`: job templates **`eval-smoke`** / **`generate-demo`**; **`FLOWGRID_UI_JOB_ADMIN_KEY`** enforced on **`POST /api/jobs/start`** and **`POST /api/jobs/:id/stop`** only.
+- `flowgrid-device`: **`FLOWGRID_DEVICE`** parsing for preview binaries (CPU vs wgpu intent).
+- `flowgrid-cli` / `flowgrid-serve`: optional Cargo feature **`gpu-wgpu`** (Burn **`Wgpu`** backend); **`FLOWGRID_DEVICE`** selects adapter when enabled.
+- `flowgrid-model`: **`hf::llama::decode_self_attn_q_proj`** (F32/BF16/F16 bytes → rank-2 tensor) + Mistral re-export; unit test `llama_decode_weights`.
 
 ### Changed
 

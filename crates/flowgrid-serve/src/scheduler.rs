@@ -81,7 +81,8 @@ impl Scheduler {
                             seed,
                             deadline,
                             |piece| {
-                                let _ = chunk_tx.blocking_send(Ok(StreamPart::Delta(piece.to_string())));
+                                let _ = chunk_tx
+                                    .blocking_send(Ok(StreamPart::Delta(piece.to_string())));
                             },
                         );
                         match r {
@@ -93,8 +94,12 @@ impl Scheduler {
                             }
                         }
                     } else {
-                        let (text, meta) =
-                            Self::echo_fallback_timed(tokenizer.as_ref(), &prompt, max_new, deadline);
+                        let (text, meta) = Self::echo_fallback_timed(
+                            tokenizer.as_ref(),
+                            &prompt,
+                            max_new,
+                            deadline,
+                        );
                         let _ = chunk_tx.blocking_send(Ok(StreamPart::Delta(text)));
                         let _ = chunk_tx.blocking_send(Ok(StreamPart::Done(meta)));
                     }
@@ -113,13 +118,7 @@ impl Scheduler {
         if let Some(engine) = llm {
             let sampling = serve_sampling_from_env();
             let seed = serve_seed_from_env();
-            let (text, meta) = engine.complete(
-                prompt,
-                max_new.max(1),
-                sampling,
-                seed,
-                deadline,
-            )?;
+            let (text, meta) = engine.complete(prompt, max_new.max(1), sampling, seed, deadline)?;
             return Ok(PlainOutput { text, meta });
         }
         let (text, meta) = Self::echo_fallback_timed(tokenizer, prompt, max_new, deadline);

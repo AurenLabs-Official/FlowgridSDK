@@ -81,6 +81,16 @@ jobs:
           cargo check -p flowgrid-serve
           cargo check -p flowgrid-ui
           cargo check -p flowgrid-cli
+          cargo check -p flowgrid-device
+
+  llm-gpu-wgpu-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (Burn Wgpu feature, compile-only)
+        run: cargo check -p flowgrid-cli -p flowgrid-serve --features gpu-wgpu
 
   semver:
     runs-on: ubuntu-latest

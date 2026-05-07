@@ -16,6 +16,12 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+    #[cfg(not(feature = "gpu-wgpu"))]
+    if flowgrid_device::gpu_requested_in_env() {
+        tracing::warn!(
+            "FLOWGRID_DEVICE requests GPU; rebuild with `cargo build -p flowgrid-serve --features gpu-wgpu` to enable Burn Wgpu"
+        );
+    }
     let auth_cfg = AuthConfig::from_env();
     let max_body = std::env::var("FLOWGRID_SERVE_MAX_BODY_BYTES")
         .ok()

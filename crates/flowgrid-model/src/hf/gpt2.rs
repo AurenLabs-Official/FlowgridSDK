@@ -77,6 +77,9 @@ pub fn tensor_f2_from_bytes<B: Backend>(
     shape: &[usize],
     device: &B::Device,
 ) -> FgResult<Tensor<B, 2>> {
+    if shape.len() != 2 {
+        return Err(FgError::shape(format!("tensor {name}: need rank-2 view")));
+    }
     let flat = vec_f32_from_tensor_bytes(dtype, data)?;
     let expected: usize = shape.iter().product();
     if flat.len() != expected {
@@ -85,11 +88,8 @@ pub fn tensor_f2_from_bytes<B: Backend>(
             flat.len()
         )));
     }
-    let s0 = *shape.first().unwrap_or(&0);
-    let s1 = *shape.get(1).unwrap_or(&0);
-    if shape.len() != 2 {
-        return Err(FgError::shape(format!("tensor {name}: need rank-2 view")));
-    }
+    let s0 = shape[0];
+    let s1 = shape[1];
     Ok(Tensor::<B, 1>::from_floats(flat.as_slice(), device).reshape([s0, s1]))
 }
 

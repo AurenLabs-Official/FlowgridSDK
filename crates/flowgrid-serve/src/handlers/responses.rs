@@ -12,9 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 use crate::completion::StreamPart;
-use crate::openai_compat::{
-    openai_error_response, openai_error_value, responses_usage_tokens,
-};
+use crate::openai_compat::{openai_error_response, openai_error_value, responses_usage_tokens};
 use crate::sse;
 use crate::types::ResponsesReq;
 use crate::AppState;
@@ -85,10 +83,8 @@ pub async fn responses(
                         Ok(Bytes::from(sse::frame(&delta.to_string())))
                     }
                     Ok(StreamPart::Done(meta)) => {
-                        let usage = responses_usage_tokens(
-                            meta.prompt_tokens,
-                            meta.completion_tokens,
-                        );
+                        let usage =
+                            responses_usage_tokens(meta.prompt_tokens, meta.completion_tokens);
                         let evt = json!({
                             "id": id_chunk,
                             "object": "response.completed",
@@ -100,11 +96,8 @@ pub async fn responses(
                         Ok(Bytes::from(sse::frame(&evt.to_string())))
                     }
                     Err(e) => {
-                        let err = openai_error_value(
-                            "server_error",
-                            "inference_error",
-                            e.to_string(),
-                        );
+                        let err =
+                            openai_error_value("server_error", "inference_error", e.to_string());
                         Ok(Bytes::from(sse::frame(&err.to_string())))
                     }
                 }
