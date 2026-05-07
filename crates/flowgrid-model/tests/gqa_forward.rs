@@ -1,3 +1,5 @@
+//! GQA (`n_kv_head` < `n_head`) shape + autoregressive parity vs full forward.
+
 use burn::backend::NdArray;
 use burn::tensor::{Int, Tensor};
 use flowgrid_model::cache::KvCacheStack;
@@ -6,14 +8,34 @@ use flowgrid_model::{LmModel, NanoGptConfig};
 type B = NdArray<f32>;
 
 #[test]
-fn forward_step_matches_full_sequence_logits() {
+fn gqa_forward_logits_shape() {
+    let device = burn_ndarray::NdArrayDevice::Cpu;
+    let cfg = NanoGptConfig {
+        vocab_size: 32,
+        block_size: 8,
+        n_layer: 1,
+        n_head: 8,
+        n_kv_head: 2,
+        n_embd: 32,
+        dropout: 0.0,
+        use_rope: true,
+        rope_theta: 10_000.0,
+    };
+    let model = cfg.init::<B>(&device);
+    let inp = Tensor::<B, 2, Int>::from_ints([[1i32, 2, 3]], &device);
+    let logits = model.forward(inp);
+    assert_eq!(logits.dims(), [1, 3, cfg.vocab_size]);
+}
+
+#[test]
+fn gqa_forward_step_matches_full_sequence_logits() {
     let device = burn_ndarray::NdArrayDevice::Cpu;
     let cfg = NanoGptConfig {
         vocab_size: 64,
         block_size: 16,
         n_layer: 2,
-        n_head: 4,
-        n_kv_head: 0,
+        n_head: 8,
+        n_kv_head: 2,
         n_embd: 32,
         dropout: 0.0,
         use_rope: true,

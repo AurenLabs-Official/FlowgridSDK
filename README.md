@@ -17,9 +17,9 @@ The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoin
 | OpenAI-style field | Behavior |
 |--------------------|----------|
 | `choices[].finish_reason` | `stop` (EOS / non-length-limited complete) or `length` (`max_tokens`) |
-| `usage.prompt_tokens` / `completion_tokens` | Exact counts from the runtime tokenizer when serving a checkpoint; otherwise approximate (echo path) |
+| `usage.prompt_tokens` / `completion_tokens` | Exact counts from the runtime tokenizer when serving a checkpoint (**EOS is excluded from `completion_tokens`**); otherwise approximate (echo path) |
 | Non-stream errors | JSON body `{ "error": { "message", "type", "code" } }` |
-| SSE errors | Same `error` object inside a terminal `data:` line before `[DONE]` |
+| SSE errors | `event: error` + OpenAI-style `error` JSON in `data:`; stream terminates **without** `[DONE]` |
 
 Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/api.md) (Messages, Batches, Models, beta namespaces), without using Python at runtime.
 
@@ -41,7 +41,8 @@ Optional workspace crates under [`crates/`](crates/) add a **Rust-native** langu
 
 ```bash
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
-cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16
+cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16 --n-head 4 --n-kv-head 0
+cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # prompt echo on by default; use --no-echo for completion-only
 cargo run -p flowgrid-serve   # OpenAI-shaped stub on :9000
 cargo run -p flowgrid-ui      # SQLite REST shell on :9010
 ```
@@ -325,6 +326,7 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 
 - **[`CHANGELOG.md`](CHANGELOG.md)** — release notes (Keep a Changelog).
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
+- **[`docs/dev-handbook.md`](docs/dev-handbook.md)** — contributor workflow, commands, Windows linker notes, release checklist.
 - **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
 - **[`docs/resilience.md`](docs/resilience.md)** — retries, custom status predicate, rate limits vs circuit breakers.
 - **[`docs/http.md`](docs/http.md)** — TLS, proxy env, timeouts, OpenAI-compatible bases.

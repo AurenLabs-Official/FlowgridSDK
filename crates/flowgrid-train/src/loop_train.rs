@@ -109,13 +109,13 @@ pub fn debug_loss_file<B: AutodiffBackend>(
     path: &Path,
     cfg: &NanoGptConfig,
     device: &B::Device,
-) -> f32 {
-    let mmap = TokenMmap::open(path).expect("mmap");
+) -> Result<f32, flowgrid_data::FgDataError> {
+    let mmap = TokenMmap::open(path)?;
     let start = 0;
     if let Some(b) = batch_from_mmap::<B>(&mmap, start, cfg.block_size, device) {
         let l = loss_for_window(model, b, device);
-        l.into_scalar().to_f32().unwrap_or(0.0)
+        Ok(l.into_scalar().to_f32().unwrap_or(0.0))
     } else {
-        0.0
+        Ok(0.0)
     }
 }

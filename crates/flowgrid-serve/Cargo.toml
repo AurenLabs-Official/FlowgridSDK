@@ -44,3 +44,4 @@ flowgrid-tokenizer = { path = "../flowgrid-tokenizer" }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+anyhow.workspace = true

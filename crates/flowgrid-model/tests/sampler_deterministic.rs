@@ -14,6 +14,7 @@ fn greedy_sampler_matches_argmax() {
         block_size: 8,
         n_layer: 1,
         n_head: 4,
+        n_kv_head: 0,
         n_embd: 16,
         dropout: 0.0,
         use_rope: true,

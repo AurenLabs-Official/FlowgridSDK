@@ -31,7 +31,11 @@ async fn main() {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(32);
-    let rate_state = flowgrid_serve::ratelimit::RateLimitState::new(rps);
+    let burst = std::env::var("FLOWGRID_SERVE_BURST")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(rps.max(1));
+    let rate_state = flowgrid_serve::ratelimit::RateLimitState::with_capacity(rps, burst.max(1));
     let llm = match flowgrid_serve::engine::LocalLlm::from_env() {
         Ok(o) => o,
         Err(e) => {

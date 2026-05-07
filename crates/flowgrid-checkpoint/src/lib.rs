@@ -5,6 +5,8 @@ use burn::tensor::backend::Backend;
 use flowgrid_model::lora::LoraSpec;
 use flowgrid_model::{NanoGpt, NanoGptConfig};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
 const MANIFEST_FORMAT_V1: u32 = 1;
@@ -51,11 +53,12 @@ fn default_rope_theta() -> f32 {
 
 fn config_basis(cfg: &NanoGptConfig, tokenizer_path: Option<&str>) -> String {
     format!(
-        "arch=nanogpt\ndtype=f32\nvocab={}\nblock={}\nn_layer={}\nn_head={}\nn_embd={}\nuse_rope={}\nrope_theta={}\ntokenizer={}\n",
+        "arch=nanogpt\ndtype=f32\nvocab={}\nblock={}\nn_layer={}\nn_head={}\nn_kv_head={}\nn_embd={}\nuse_rope={}\nrope_theta={}\ntokenizer={}\n",
         cfg.vocab_size,
         cfg.block_size,
         cfg.n_layer,
         cfg.n_head,
+        cfg.resolved_n_kv_head(),
         cfg.n_embd,
         cfg.use_rope,
         cfg.rope_theta,
@@ -96,7 +99,7 @@ impl Manifest {
             hidden: cfg.n_embd,
             n_layer: cfg.n_layer,
             n_head: cfg.n_head,
-            n_kv_head: None,
+            n_kv_head: Some(cfg.resolved_n_kv_head()),
             tokenizer_path,
             lora: None,
             lora_schema_version: None,
@@ -122,6 +125,7 @@ impl Manifest {
             block_size: self.block_size,
             n_layer: self.n_layer,
             n_head: self.n_head.max(1),
+            n_kv_head: self.n_kv_head.unwrap_or(0),
             n_embd: self.hidden,
             dropout: 0.0,
             use_rope: self.use_rope,
@@ -136,6 +140,22 @@ fn manifest_path(dir: &Path) -> PathBuf {
 
 fn model_path(dir: &Path) -> PathBuf {
     dir.join("model.bin")
+}
+
+fn hash_model_file_blake3(path: &Path) -> Result<[u8; 32]> {
+    let mut f = BufReader::new(
+        File::open(path).with_context(|| format!("open {}", path.display()))?,
+    );
+    let mut h = blake3::Hasher::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = f.read(&mut buf).with_context(|| format!("read {}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(*h.finalize().as_bytes())
 }
 
 fn lora_spec_path(dir: &Path) -> PathBuf {
@@ -190,9 +210,7 @@ pub fn save_nano_gpt_checkpoint<B: Backend>(
         .record(record, path.clone())
         .with_context(|| format!("write burn record {}", path.display()))?;
 
-    let weights_bytes =
-        std::fs::read(&path).with_context(|| format!("read back {}", path.display()))?;
-    let digest = *blake3::hash(&weights_bytes).as_bytes();
+    let digest = hash_model_file_blake3(&path)?;
     let mut manifest = Manifest::from_nano_gpt_with_weights(cfg, tokenizer_path, &digest);
     if let Some(rel) = lora_sidecar {
         manifest.lora = Some(rel.to_string());
@@ -304,6 +322,7 @@ mod tests {
             block_size: 8,
             n_layer: 1,
             n_head: 2,
+            n_kv_head: 0,
             n_embd: 8,
             dropout: 0.0,
             use_rope: true,

@@ -46,6 +46,7 @@ fn attach_attn<B: Backend>(
         v_proj: maybe_rewrap(attn.v_proj, spec, LoraTarget::V, lc, device),
         o_proj: maybe_rewrap(attn.o_proj, spec, LoraTarget::O, lc, device),
         n_head: attn.n_head,
+        n_kv_head: attn.n_kv_head,
         d_k: attn.d_k,
         use_rope: attn.use_rope,
         rope_theta: attn.rope_theta,

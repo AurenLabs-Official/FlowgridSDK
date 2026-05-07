@@ -107,12 +107,26 @@ impl LocalLlm {
             ids.push(0);
         }
         let bs = self.model.block_size();
-        while ids.len() > bs {
-            ids.remove(0);
+        if ids.len() > bs {
+            let drop = ids.len() - bs;
+            ids.drain(0..drop);
         }
         let prompt_tokens = ids.len() as u32;
+        let blk0 = self
+            .model
+            .blocks
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("model has no transformer blocks"))?;
         let mut caches: Vec<KvCache<InferB>> = (0..self.model.n_layer())
-            .map(|_| KvCache::empty())
+            .map(|_| {
+                KvCache::with_capacity(
+                    1,
+                    blk0.attn.kv_heads(),
+                    bs,
+                    blk0.attn.head_dim(),
+                    &self.device,
+                )
+            })
             .collect();
         let seq = ids.len();
         let inp =
@@ -124,7 +138,6 @@ impl LocalLlm {
         let max_gen = max_new.max(1);
         let mut completion_tokens: u32 = 0;
 
-        completion_tokens += 1;
         if is_eos(next) {
             return Ok(CompletionMeta {
                 prompt_tokens,
@@ -132,6 +145,7 @@ impl LocalLlm {
                 finish_reason: "stop",
             });
         }
+        completion_tokens += 1;
         on_piece(
             &self
                 .tokenizer
@@ -144,7 +158,6 @@ impl LocalLlm {
             let t = Tensor::<InferB, 1, Int>::from_ints([next], &self.device).reshape([1, 1]);
             let logits = self.model.forward_step(t, Some(&mut caches));
             next = sample_from_last_logits(&logits, sampling, &mut rng);
-            completion_tokens += 1;
             if is_eos(next) {
                 return Ok(CompletionMeta {
                     prompt_tokens,
@@ -152,6 +165,7 @@ impl LocalLlm {
                     finish_reason: "stop",
                 });
             }
+            completion_tokens += 1;
             on_piece(
                 &self
                     .tokenizer
@@ -193,4 +207,46 @@ pub fn serve_seed_from_env() -> u64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod eos_completion_token_tests {
+    /// Mirrors `complete_stream` completion-token policy: EOS IDs are never counted toward
+    /// OpenAI-shaped `completion_tokens`.
+    fn simulate(first_is_eos: bool, eos_on_extra_steps: &[bool], max_gen: usize) -> u32 {
+        let mut completion_tokens = 0u32;
+        if first_is_eos {
+            return completion_tokens;
+        }
+        completion_tokens += 1;
+        for &step_eos in eos_on_extra_steps
+            .iter()
+            .take(max_gen.saturating_sub(1))
+        {
+            if step_eos {
+                return completion_tokens;
+            }
+            completion_tokens += 1;
+        }
+        completion_tokens
+    }
+
+    #[test]
+    fn immediate_eos_zero_completion_tokens() {
+        assert_eq!(simulate(true, &[], 4), 0);
+    }
+
+    #[test]
+    fn eos_second_step_counts_one_non_eos_completion() {
+        assert_eq!(simulate(false, &[true], 4), 1);
+    }
+
+    #[test]
+    fn no_eos_hits_max_gen() {
+        assert_eq!(
+            simulate(false, &[false, false, false], 4),
+            4,
+            "max_gen generations, none EOS"
+        );
+    }
 }

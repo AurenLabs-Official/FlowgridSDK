@@ -92,6 +92,41 @@ async fn unauthorized_returns_openai_error_json() {
 }
 
 #[tokio::test]
+async fn api_key_header_authorizes_like_bearer() {
+    let scheduler = Scheduler::start(
+        SchedulerConfig {
+            queue_depth: 4,
+            request_timeout_ms: 5_000,
+        },
+        None,
+    );
+    let state = Arc::new(AppState {
+        scheduler,
+        auth: AuthConfig {
+            required: true,
+            keys: vec!["secret".to_string()],
+        },
+        rate: RateLimitState::new(9999),
+    });
+    let app = build_app(state);
+    let body = serde_json::json!({
+        "model": "m",
+        "stream": false,
+        "messages": [{ "role": "user", "content": "x" }],
+        "max_tokens": 4
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header("content-type", "application/json")
+        .header("api-key", "secret")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn response_non_stream_has_status_and_usage() {
     let app = build_app(test_state());
     let body = serde_json::json!({

@@ -20,12 +20,13 @@ fn debug_loss_runs_on_tiny_bin() {
         block_size: 8,
         n_layer: 1,
         n_head: 4,
+        n_kv_head: 0,
         n_embd: 16,
         dropout: 0.0,
         use_rope: true,
         rope_theta: 10_000.0,
     };
     let model: NanoGpt<B> = cfg.init(&device);
-    let l = debug_loss_file(&model, f.path(), &cfg, &device);
+    let l = debug_loss_file(&model, f.path(), &cfg, &device).expect("debug loss");
     assert!(l.is_finite());
 }

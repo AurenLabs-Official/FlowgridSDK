@@ -57,6 +57,10 @@ enum Cmd {
         layers: usize,
         #[arg(long, default_value_t = 128)]
         embd: usize,
+        #[arg(long, default_value_t = 4)]
+        n_head: usize,
+        #[arg(long, default_value_t = 0)]
+        n_kv_head: usize,
         #[arg(long, default_value_t = 16)]
         steps: usize,
         #[arg(long)]
@@ -104,6 +108,10 @@ enum Cmd {
         layers: usize,
         #[arg(long, default_value_t = 128)]
         embd: usize,
+        #[arg(long, default_value_t = 4)]
+        n_head: usize,
+        #[arg(long, default_value_t = 0)]
+        n_kv_head: usize,
         #[arg(long)]
         load: Option<PathBuf>,
         #[arg(long)]
@@ -114,6 +122,9 @@ enum Cmd {
         top_k: Option<usize>,
         #[arg(long)]
         seed: Option<u64>,
+        /// Do not print the prompt prefix before sampled tokens (defaults to streaming **prompt then completion** together).
+        #[arg(long)]
+        no_echo: bool,
     },
     /// Evaluate checkpoint/dataset and print JSON metrics.
     Eval {
@@ -133,6 +144,10 @@ enum Cmd {
         layers: usize,
         #[arg(long, default_value_t = 128)]
         embd: usize,
+        #[arg(long, default_value_t = 4)]
+        n_head: usize,
+        #[arg(long, default_value_t = 0)]
+        n_kv_head: usize,
         #[arg(long)]
         baseline_ppl: Option<f32>,
         #[arg(long, default_value_t = 5.0)]
@@ -188,6 +203,8 @@ fn main() -> Result<()> {
             block,
             layers,
             embd,
+            n_head,
+            n_kv_head,
             steps,
             learn,
             lr,
@@ -226,7 +243,8 @@ fn main() -> Result<()> {
                     vocab_size: vocab_eff,
                     block_size: block,
                     n_layer: layers,
-                    n_head: 4,
+                    n_head: n_head.max(1),
+                    n_kv_head,
                     n_embd: embd,
                     dropout: 0.0,
                     use_rope: true,
@@ -335,11 +353,14 @@ fn main() -> Result<()> {
             block,
             layers,
             embd,
+            n_head,
+            n_kv_head,
             load,
             tokenizer,
             temperature,
             top_k,
             seed,
+            no_echo,
         } => {
             let device = backend::infer_device();
             let tokenizer_eff = if tokenizer.is_none() {
@@ -348,23 +369,28 @@ fn main() -> Result<()> {
             } else {
                 tokenizer.clone()
             };
+            let tokenizer_loaded: Option<FgTokenizer> = tokenizer_eff
+                .as_ref()
+                .map(|p| {
+                    FgTokenizer::from_file(p)
+                        .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", p.display()))
+                })
+                .transpose()?;
             let (model, cfg) = if let Some(ref dir) = load {
                 let (m, man) = load_nano_gpt_checkpoint::<InferBackend>(dir, &device)
                     .context("load generate checkpoint")?;
                 (m, man.to_nano_gpt_config())
             } else {
-                let vocab_eff = if let Some(path) = tokenizer_eff.as_ref() {
-                    let tok = FgTokenizer::from_file(path)
-                        .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
-                    tok.vocab_size()
-                } else {
-                    vocab
-                };
+                let vocab_eff = tokenizer_loaded
+                    .as_ref()
+                    .map(|t| t.vocab_size())
+                    .unwrap_or(vocab);
                 let c = NanoGptConfig {
                     vocab_size: vocab_eff,
                     block_size: block,
                     n_layer: layers,
-                    n_head: 4,
+                    n_head: n_head.max(1),
+                    n_kv_head,
                     n_embd: embd,
                     dropout: 0.0,
                     use_rope: true,
@@ -386,15 +412,8 @@ fn main() -> Result<()> {
             } else {
                 StdRng::from_entropy()
             };
-            let tokenizer_runtime: Option<FgTokenizer> = if let Some(path) = tokenizer_eff {
-                Some(
-                    FgTokenizer::from_file(&path)
-                        .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?,
-                )
-            } else {
-                None
-            };
-            let mut ids: Vec<i32> = if let Some(tok) = tokenizer_runtime.as_ref() {
+            let tok_for_encode_decode = tokenizer_loaded.as_ref();
+            let mut ids: Vec<i32> = if let Some(tok) = tok_for_encode_decode {
                 tok.encode(&prompt, true)
                     .map_err(|e| anyhow::anyhow!("tokenize prompt: {e}"))?
                     .into_iter()
@@ -409,6 +428,9 @@ fn main() -> Result<()> {
             if ids.len() > cfg.block_size {
                 anyhow::bail!("prompt longer than block_size ({})", cfg.block_size);
             }
+            if !no_echo {
+                print!("{prompt}");
+            }
             let mut generated: Vec<u8> = Vec::with_capacity(max_new);
             let mut decode_state = DecoderState::default();
             let mut decoded_out = String::new();
@@ -419,7 +441,7 @@ fn main() -> Result<()> {
                 let logits = model.forward(inp);
                 let next_i = sample_from_last_logits(&logits, sampling, &mut rng);
                 ids.push(next_i);
-                if let Some(tok) = tokenizer_runtime.as_ref() {
+                if let Some(tok) = tok_for_encode_decode {
                     let piece = tok
                         .decode_streaming(&mut decode_state, next_i as u32)
                         .unwrap_or_default();
@@ -429,10 +451,11 @@ fn main() -> Result<()> {
                     generated.push(b);
                 }
                 if ids.len() > cfg.block_size {
-                    ids.remove(0);
+                    let drop = ids.len() - cfg.block_size;
+                    ids.drain(0..drop);
                 }
             }
-            if tokenizer_runtime.is_some() {
+            if tok_for_encode_decode.is_some() {
                 println!("{decoded_out}");
             } else {
                 println!("{}", String::from_utf8_lossy(&generated));
@@ -447,6 +470,8 @@ fn main() -> Result<()> {
             vocab,
             layers,
             embd,
+            n_head,
+            n_kv_head,
             baseline_ppl,
             max_regression_pct,
         } => {
@@ -463,7 +488,8 @@ fn main() -> Result<()> {
                     vocab_size: vocab,
                     block_size: block,
                     n_layer: layers,
-                    n_head: 4,
+                    n_head: n_head.max(1),
+                    n_kv_head,
                     n_embd: embd,
                     dropout: 0.0,
                     use_rope: true,

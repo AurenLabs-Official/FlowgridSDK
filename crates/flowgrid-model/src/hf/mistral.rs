@@ -18,8 +18,9 @@ pub fn expected_keys() -> Vec<&'static str> {
         "model.layers.0.self_attn.v_proj.weight",
         "model.layers.0.self_attn.o_proj.weight",
         "model.layers.0.mlp.gate_proj.weight",
+        "model.layers.0.mlp.up_proj.weight",
         "model.layers.0.mlp.down_proj.weight",
     ]
 }
 
-pub use super::llama::decode_self_attn_q_proj;
+pub use super::llama::{decode_self_attn_kv_proj, decode_self_attn_q_proj};

@@ -10,7 +10,7 @@ use crate::rope::{apply_rope_qk, rope_tables};
 #[derive(Config, Debug)]
 pub struct CausalSelfAttnConfig {
     pub n_head: usize,
-    pub n_kv_head: Option<usize>,
+    pub n_kv_head: usize,
     pub head_dim: usize,
     #[config(default = true)]
     pub use_rope: bool,
@@ -26,6 +26,7 @@ pub struct CausalSelfAttn<B: Backend> {
     pub v_proj: LoraLinear<B>,
     pub o_proj: LoraLinear<B>,
     pub(crate) n_head: usize,
+    pub(crate) n_kv_head: usize,
     pub(crate) d_k: usize,
     pub(crate) use_rope: bool,
     pub(crate) rope_theta: f32,
@@ -35,14 +36,24 @@ pub struct CausalSelfAttn<B: Backend> {
 impl CausalSelfAttnConfig {
     pub fn init<B: Backend>(&self, n_embd: usize, device: &B::Device) -> CausalSelfAttn<B> {
         let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
-        let proj = |n_in, n_out| disabled.init(LinearConfig::new(n_in, n_out).init(device), device);
+        let proj =
+            |n_in, n_out| disabled.init(LinearConfig::new(n_in, n_out).init(device), device);
+        let nh = self.n_head.max(1);
+        let n_kv = self.n_kv_head.max(1);
+        let d_k = self.head_dim.max(1);
+        assert!(
+            nh % n_kv == 0,
+            "n_head ({nh}) must be divisible by n_kv_head ({n_kv})"
+        );
+        let kv_dim = n_kv * d_k;
         CausalSelfAttn {
             q_proj: proj(n_embd, n_embd),
-            k_proj: proj(n_embd, n_embd),
-            v_proj: proj(n_embd, n_embd),
+            k_proj: proj(n_embd, kv_dim),
+            v_proj: proj(n_embd, kv_dim),
             o_proj: proj(n_embd, n_embd),
-            n_head: self.n_head.max(1),
-            d_k: (n_embd / self.n_head.max(1)).max(1),
+            n_head: nh,
+            n_kv_head: n_kv,
+            d_k,
             use_rope: self.use_rope,
             rope_theta: self.rope_theta,
             max_seq: self.max_seq,
@@ -60,6 +71,7 @@ impl<B: Backend> CausalSelfAttn<B> {
             v_proj: disabled.init(self.v_proj.merged_linear(), device),
             o_proj: disabled.init(self.o_proj.merged_linear(), device),
             n_head: self.n_head,
+            n_kv_head: self.n_kv_head,
             d_k: self.d_k,
             use_rope: self.use_rope,
             rope_theta: self.rope_theta,
@@ -69,6 +81,14 @@ impl<B: Backend> CausalSelfAttn<B> {
 
     pub fn uses_rope(&self) -> bool {
         self.use_rope
+    }
+
+    pub fn kv_heads(&self) -> usize {
+        self.n_kv_head
+    }
+
+    pub fn head_dim(&self) -> usize {
+        self.d_k
     }
 
     pub fn forward(&self, x: Tensor<B, 3>, cache: Option<&mut KvCache<B>>) -> Tensor<B, 3> {
@@ -88,23 +108,22 @@ impl<B: Backend> CausalSelfAttn<B> {
         let mut k = self
             .k_proj
             .forward(x.clone())
-            .reshape([batch, seq, self.n_head, self.d_k])
+            .reshape([batch, seq, self.n_kv_head, self.d_k])
             .swap_dims(1, 2);
         let v = self
             .v_proj
             .forward(x)
-            .reshape([batch, seq, self.n_head, self.d_k])
+            .reshape([batch, seq, self.n_kv_head, self.d_k])
             .swap_dims(1, 2);
         let mut q = q;
         if self.use_rope {
-            let rope_seq = seq.min(self.max_seq.max(1));
             let pos_off = past_len;
-            let (cos, sin) =
-                rope_tables::<B>(pos_off, rope_seq, self.d_k, self.rope_theta, &device);
+            let (cos, sin) = rope_tables::<B>(pos_off, seq, self.d_k, self.rope_theta, &device);
             let out = apply_rope_qk(q, k, cos, sin);
             q = out.0;
             k = out.1;
         }
+        let group = self.n_head / self.n_kv_head;
         let mut k_all = k.clone();
         let mut v_all = v.clone();
         if let Some(cache) = cache {
@@ -114,16 +133,27 @@ impl<B: Backend> CausalSelfAttn<B> {
                 v_all = vc;
             }
         }
-        let total_keys = k_all.dims()[2];
+        let expand_kv = |t: Tensor<B, 4>| -> Tensor<B, 4> {
+            if group == 1 {
+                return t;
+            }
+            let [b, nk, s, dk] = t.dims();
+            t.reshape([b, nk, 1, s, dk])
+                .repeat(2, group)
+                .reshape([b, self.n_head, s, dk])
+        };
+        let k_exp = expand_kv(k_all);
+        let v_exp = expand_kv(v_all);
+        let total_keys = k_exp.dims()[2];
         let mask_bias = decoder_attn_mask_bias::<B>(&device, batch, seq, past_len, total_keys);
         let attn_scores = q
-            .matmul(k_all.swap_dims(2, 3))
+            .matmul(k_exp.swap_dims(2, 3))
             .div_scalar((self.d_k as f32).sqrt())
             + mask_bias;
 
         let weights = activation::softmax(attn_scores, 3);
         let context = weights
-            .matmul(v_all)
+            .matmul(v_exp)
             .swap_dims(1, 2)
             .reshape([batch, seq, d_model]);
         self.o_proj.forward(context)

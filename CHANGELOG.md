@@ -27,8 +27,21 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 
 ## [Unreleased]
 
+### Breaking (preview crates)
+
+- **`NanoGptConfig`**: new **`n_kv_head`** (`0` = multi-head alias for `n_head`; must divide `n_head`).
+- **`b3:` checkpoint fingerprints** recomputed: `config_basis` now includes **`n_kv_head`**; re-save to refresh fingerprints.
+- **OpenAI-shaped `completion_tokens`** (checkpoint decode): **EOS / stop token is not counted** (was counted before).
+- **`KvCache`**: requires **`KvCache::with_capacity`** (`empty` removed); keys are **`[batch, n_kv_head, seq, head_dim]`** in the projected layout.
+
 ### Added
 
+- `flowgrid-cli`: **`--n-kv-head`** on `train`, `generate`, `eval` (`0` = default to `--n-head`); **`--no-echo`** already streams **prompt + completion**.
+- `flowgrid-serve`: **`FLOWGRID_SERVE_BURST`** (token-bucket burst; defaults to `FLOWGRID_SERVE_RPS`); streamed inference errors **`event: error`** without **`[DONE]`**; **`api-key` / `x-api-key`** auth headers alongside Bearer.
+- `flowgrid-checkpoint`: streamed BLAKE3 over `model.bin` (bounded buffer read) → same digest, less RAM spikes.
+- `flowgrid-tokenizer`: **`DecoderState::reset`**; incremental **`decode_streaming`** uses one full **`decode`/step** plus prefix/LCP delta.
+- `flowgrid-model`: **GQA** attention + **`decode_self_attn_kv_proj`** (Llama); RoPE **`apply_rope_qk`** honors mismatched **Q/K** head axes.
+- KV cache **`slice_assign`** ring buffer regression test in-crate.
 - **LLM stack (preview):** Burn-backed crates `flowgrid-tensor`, `flowgrid-tokenizer`, `flowgrid-data`, `flowgrid-model`, `flowgrid-train`, `flowgrid-cli` (`flowgrid-llm`), `flowgrid-serve`, `flowgrid-edit`, `flowgrid-ui`; overview [`docs/llm/overview.md`](docs/llm/overview.md). Workspace pins **`bincode =2.0.0-rc.3`** for `burn` 0.13 compatibility.
 - Examples: **`openai_assistants_e2e`** (Assistants thread → message → run → bounded poll) and **`openai_responses_stream_accumulate`** (Responses SSE + bounded text accumulation); README **`full` vs `enterprise`** subsection and **`docs/observability.md`** dashboard hints.
 - OpenAI **cursor list helpers**: **`ListPagesLimits`**, **`ListPage::after_cursor`**, **`AssistantsClient::list_all_typed`**, **`ThreadsClient::list_all_typed`**; **`ListPage`** forward-compatible **`extra`** map; Assistants **run steps** (**`ThreadRunStep`**, **`list_steps_typed`**) with fixtures + wiremock.
@@ -52,6 +65,7 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 
 ### Fixed
 
+- `flowgrid-eval` / docs: clarified **`EvalReport.n_tokens`** semantics for LM targets over contiguous windows.
 - **Criterion `hot_path`:** Anthropic SSE benchmark is registered whenever feature **`anthropic`** is enabled (including alongside **`openai`** / `full`), not only when OpenAI is off.
 - **`Retry-After` HTTP-date** values in the past (or equal to “now”) are ignored so retries use exponential backoff instead of a **zero** delay.
 - **README:** duplicate compatibility paragraph removed.

@@ -15,6 +15,7 @@ pub mod openai_compat;
 pub mod ratelimit;
 pub mod scheduler;
 mod sse;
+pub mod stream_sse;
 mod types;
 
 pub use auth::AuthConfig;

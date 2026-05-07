@@ -4,16 +4,12 @@ use axum::http::header;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
-use bytes::Bytes;
-use futures::stream::{self, StreamExt};
+use futures::stream::StreamExt;
 use serde_json::json;
-use std::io::Error;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
-
-use crate::completion::StreamPart;
-use crate::openai_compat::{chat_usage_tokens, openai_error_response, openai_error_value};
-use crate::sse;
+use crate::openai_compat::{chat_usage_tokens, openai_error_response};
+use crate::stream_sse;
 use crate::types::ChatReq;
 use crate::AppState;
 
@@ -62,43 +58,10 @@ pub async fn chat_completions(
         let model = body.model.clone();
         let id_chunk = id.clone();
         let model_chunk = model.clone();
-        let mapped = ReceiverStream::new(rx).map(
-            move |item: Result<StreamPart, anyhow::Error>| -> Result<Bytes, Error> {
-                match item {
-                    Ok(StreamPart::Delta(piece)) => {
-                        let chunk = json!({
-                            "id": id_chunk,
-                            "object": "chat.completion.chunk",
-                            "model": model_chunk,
-                            "choices": [{ "index": 0, "delta": { "content": piece } }]
-                        });
-                        Ok(Bytes::from(sse::frame(&chunk.to_string())))
-                    }
-                    Ok(StreamPart::Done(meta)) => {
-                        let chunk = json!({
-                            "id": id_chunk,
-                            "object": "chat.completion.chunk",
-                            "model": model_chunk,
-                            "choices": [{
-                                "index": 0,
-                                "delta": {},
-                                "finish_reason": meta.finish_reason,
-                            }],
-                            "usage": chat_usage_tokens(meta.prompt_tokens, meta.completion_tokens),
-                        });
-                        Ok(Bytes::from(sse::frame(&chunk.to_string())))
-                    }
-                    Err(e) => {
-                        let err =
-                            openai_error_value("server_error", "inference_error", e.to_string());
-                        Ok(Bytes::from(sse::frame(&err.to_string())))
-                    }
-                }
-            },
-        );
-        let stream = mapped.chain(stream::once(async move {
-            Ok::<Bytes, Error>(Bytes::from(sse::done()))
-        }));
+        let stream = ReceiverStream::new(rx).flat_map(move |item| {
+            let chunks = stream_sse::chat_completion_sse_chunks(&id_chunk, &model_chunk, item);
+            futures::stream::iter(chunks.into_iter().map(Ok::<_, std::io::Error>))
+        });
         let body = Body::from_stream(stream);
         return (
             [(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")],

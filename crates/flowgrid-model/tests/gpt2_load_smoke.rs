@@ -28,6 +28,7 @@ fn gpt2_weight_map_loads_and_runs_forward() {
         block_size: p,
         n_layer: 1,
         n_head: nh,
+        n_kv_head: 0,
         n_embd: d,
         dropout: 0.0,
         use_rope: false,

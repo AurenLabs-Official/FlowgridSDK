@@ -53,9 +53,9 @@ impl Scheduler {
         tokenizer: Option<FgTokenizer>,
         timeout_ms: u64,
     ) {
-        let _timeout = Duration::from_millis(timeout_ms.max(1));
+        let timeout = Duration::from_millis(timeout_ms.max(1));
         while let Ok(req) = req_rx.recv() {
-            let deadline = Instant::now() + _timeout;
+            let deadline = Instant::now() + timeout;
             let deadline = Some(deadline);
             match req {
                 SchedulerReq::Plain {

@@ -4,16 +4,13 @@ use axum::http::header;
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use axum::Json;
-use bytes::Bytes;
-use futures::stream::{self, StreamExt};
+use futures::stream::StreamExt;
 use serde_json::json;
-use std::io::Error;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-use crate::completion::StreamPart;
-use crate::openai_compat::{openai_error_response, openai_error_value, responses_usage_tokens};
-use crate::sse;
+use crate::openai_compat::{openai_error_response, responses_usage_tokens};
+use crate::stream_sse;
 use crate::types::ResponsesReq;
 use crate::AppState;
 
@@ -70,42 +67,10 @@ pub async fn responses(
         let model = body.model.clone();
         let id_chunk = id.clone();
         let model_chunk = model.clone();
-        let mapped = ReceiverStream::new(rx).map(
-            move |item: Result<StreamPart, anyhow::Error>| -> Result<Bytes, Error> {
-                match item {
-                    Ok(StreamPart::Delta(piece)) => {
-                        let delta = json!({
-                            "id": id_chunk,
-                            "object": "response.output_text.delta",
-                            "model": model_chunk,
-                            "delta": piece
-                        });
-                        Ok(Bytes::from(sse::frame(&delta.to_string())))
-                    }
-                    Ok(StreamPart::Done(meta)) => {
-                        let usage =
-                            responses_usage_tokens(meta.prompt_tokens, meta.completion_tokens);
-                        let evt = json!({
-                            "id": id_chunk,
-                            "object": "response.completed",
-                            "model": model_chunk,
-                            "status": "completed",
-                            "finish_reason": meta.finish_reason,
-                            "usage": usage,
-                        });
-                        Ok(Bytes::from(sse::frame(&evt.to_string())))
-                    }
-                    Err(e) => {
-                        let err =
-                            openai_error_value("server_error", "inference_error", e.to_string());
-                        Ok(Bytes::from(sse::frame(&err.to_string())))
-                    }
-                }
-            },
-        );
-        let stream = mapped.chain(stream::once(async move {
-            Ok::<Bytes, Error>(Bytes::from(sse::done()))
-        }));
+        let stream = ReceiverStream::new(rx).flat_map(move |item| {
+            let chunks = stream_sse::responses_sse_chunks(&id_chunk, &model_chunk, item);
+            futures::stream::iter(chunks.into_iter().map(Ok::<_, std::io::Error>))
+        });
         let body = Body::from_stream(stream);
         return (
             [(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")],

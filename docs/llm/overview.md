@@ -8,15 +8,15 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 
 | Area | Status |
 |------|--------|
-| **CPU / NdArray** decoder (`NanoGpt`), RoPE + KV-cache + cache parity tests | **Works** (preview) |
-| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json` with `manifest_version` + BLAKE3 `fingerprint` including `model.bin`; optional LoRA sidecar pointer `lora` + `lora_schema_version`) | **Works** (preview) |
+| **CPU / NdArray** decoder (`NanoGpt`), RoPE + **pre-sized KV cache** + cache parity tests; **GQA** via `n_kv_head` (must divide `n_head`) | **Works** (preview) |
+| **Checkpoint** `save_nano_gpt_checkpoint` / `load_nano_gpt_checkpoint` (Burn bincode record + `manifest.json` with `manifest_version` + BLAKE3 `fingerprint` including streamed hash of `model.bin`; **`config_basis` includes resolved `n_kv_head`** → old `b3:` fingerprints change on upgrade; optional LoRA sidecar pointer `lora` + `lora_schema_version`) | **Works** (preview) |
 | **Sampler** (greedy / temperature / top-k) + CLI `generate` | **Works** (preview) |
 | **GPT-2 safetensors → `NanoGpt`** (`load_gpt2_into_nano_gpt`, Conv1D `[nx, nf]` layout, `lm_head` orientation) | **Works** (preview); LayerNorm from HF still init defaults |
 | **Eval** `perplexity` + `EvalReport` JSON + `flowgrid-llm eval --baseline-ppl --max-regression-pct` + `--stride` | **Works** (preview) |
-| **`flowgrid-serve`** real decode when `FLOWGRID_SERVE_CHECKPOINT` set; SSE one event per streamed token; tokenizer from manifest | **Works** (preview) |
+| **`flowgrid-serve`** real decode when `FLOWGRID_SERVE_CHECKPOINT` set; SSE one event per streamed token; tokenizer from manifest; **Bearer** or **`api-key` / `x-api-key`** auth; **token-bucket** HTTP rate limit (`FLOWGRID_SERVE_RPS` / `FLOWGRID_SERVE_BURST`) | **Works** (preview) |
 | **Studio UI** job start with **kind + command allowlist** | **Partial** |
 | **LoRA** `LoraLinear` forward + `merged_linear`; `attach_lora` for `NanoGpt` (wraps targeted projections; `gate` reserved for non–nano-GPT arch) | **Works** (preview) |
-| **Llama / Mistral / Qwen** | **Preview**: key validation + **staged** `decode_self_attn_q_proj` (F32 tensor bytes → rank-2 tensor) for Llama/Mistral `q_proj`; full map into `NanoGpt` still WIP |
+| **Llama / Mistral / Qwen** | **Preview**: key validation + **staged** `decode_self_attn_q_proj` and **`decode_self_attn_kv_proj`** (GQA **`[n_kv·d, n_embd]`** layout); full map into `NanoGpt` still WIP |
 | **GPU backends** | **Optional** Cargo feature **`gpu-wgpu`** on `flowgrid-cli` / `flowgrid-serve` (Burn `Wgpu`); env **`FLOWGRID_DEVICE`** parsed by [`flowgrid-device`](crates/flowgrid-device) (`cpu`, `wgpu`, `wgpu:0`, …). Default builds stay **NdArray CPU** (MSRV-friendly). |
 | **ROME/MEMIT** (`flowgrid-edit`) | **Experimental** — gated until checkpoint + LoRA path is stable |
 
@@ -26,9 +26,9 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 |-------|------|
 | `flowgrid` | **Stable** HTTP SDK (unchanged for LLM work) |
 | `flowgrid-device` | `FLOWGRID_DEVICE` parsing (no Burn dependency) |
-| `flowgrid-tokenizer` | Hugging Face `tokenizer.json` |
+| `flowgrid-tokenizer` | HF `tokenizer.json`; streaming decode with **incremental** `decode_streaming` |
 | `flowgrid-data` | mmap token blobs (`u32` LE) |
-| `flowgrid-model` | `NanoGpt`, cache, RoPE, sampler, HF loaders (GPT-2 + key validation stubs) |
+| `flowgrid-model` | `NanoGpt` (GQA), prealloc KV cache, RoPE, sampler, HF loaders |
 | `flowgrid-train` | CE loss, `TrainerConfig`, training loop helpers |
 | `flowgrid-eval` | Perplexity + regression gate |
 | `flowgrid-checkpoint` | Manifest + Burn record I/O |
@@ -42,8 +42,8 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 ```bash
 cargo build -p flowgrid-cli
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
-cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 32
-cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16
+cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 32 --n-head 4 --n-kv-head 0
+cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # echoes prompt prefix; `--no-echo` for completion-only
 ```
 
 ### `FLOWGRID_DEVICE` (CLI + serve)
@@ -77,13 +77,13 @@ cargo run -p flowgrid-serve
 # POST http://127.0.0.1:9000/v1/chat/completions
 ```
 
-Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`, `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS` (bounds each generation; default 10_000).
+Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`, `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS` (bounds each generation; default 10_000), **`FLOWGRID_SERVE_RPS`** (requests/sec token bucket refill; default `32`), **`FLOWGRID_SERVE_BURST`** (max bucket tokens; defaults to **`FLOWGRID_SERVE_RPS`**), `FLOWGRID_SERVE_MAX_BODY_BYTES`.
 
 ### Usage / `finish_reason` (exact vs approximate)
 
 | Mode | `prompt_tokens` / `completion_tokens` | `finish_reason` |
 |------|----------------------------------------|-----------------|
-| Local **`NanoGpt`** with checkpoint tokenizer | Encoder length of the prompt; one count per **generated** token id; streamed SSE uses the same totals on the final chunk | `stop` when `<eos>` is sampled (or token id from **`FLOWGRID_SERVE_EOS_ID`**) or on scheduler failure paths; **`length`** when `max_tokens` is reached first |
+| Local **`NanoGpt`** with checkpoint tokenizer | Encoder length of the prompt; one count per **generated** token id (**EOS is not counted** in `completion_tokens`); streamed SSE uses the same totals on the final chunk | `stop` when `<eos>` is sampled (or token id from **`FLOWGRID_SERVE_EOS_ID`**) or on scheduler failure paths; SSE inference errors emit **`event: error`** and **omit** `[DONE]`; **`length`** when `max_tokens` is reached first |
 | Echo + optional `FLOWGRID_SERVE_TOKENIZER` (no checkpoint) | Prompt side from tokenizer encode when available; completion from tokenizer ids for the echoed tail | Usually `stop` |
 | Pure echo (no tokenizer env) | **`~ceil(bytes/4)`** heuristic via `approx_tokens_from_text` for both sides | `stop` |
 

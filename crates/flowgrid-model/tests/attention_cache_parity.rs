@@ -13,6 +13,7 @@ fn forward_and_cache_step_have_close_last_token_logits() {
         block_size: 16,
         n_layer: 2,
         n_head: 4,
+        n_kv_head: 0,
         n_embd: 32,
         dropout: 0.0,
         use_rope: true,

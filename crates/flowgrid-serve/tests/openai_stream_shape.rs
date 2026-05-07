@@ -54,3 +54,26 @@ async fn chat_stream_ends_with_usage_in_sse() {
         "expected SSE done sentinel, got: {text}"
     );
 }
+
+#[test]
+fn sse_inference_error_event_without_done_sentinel() {
+    let chunks = flowgrid_serve::stream_sse::chat_completion_sse_chunks(
+        "rid",
+        "model-x",
+        Err(anyhow::anyhow!("forced inference failure")),
+    );
+    assert_eq!(chunks.len(), 1);
+    let text = String::from_utf8_lossy(&chunks[0]);
+    assert!(
+        text.contains("event: error"),
+        "expected event: error, got: {text}"
+    );
+    assert!(
+        text.contains("data:"),
+        "expected data line, got: {text}"
+    );
+    assert!(
+        !text.contains("[DONE]"),
+        "must not send [DONE] after stream error, got: {text}"
+    );
+}

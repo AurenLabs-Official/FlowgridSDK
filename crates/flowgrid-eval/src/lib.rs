@@ -7,6 +7,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EvalReport {
+    /// Total number of **next-token prediction positions** scored (sums to `n_batches × block`-equivalent LM steps — each batch aligns with `targets` length in CE, not raw mmap window bytes).
     pub n_tokens: usize,
     pub n_batches: usize,
     pub mean_ce: f32,
@@ -40,6 +41,7 @@ pub fn perplexity<B: AutodiffBackend>(
             let v = loss.into_scalar();
             acc += v.to_f32().unwrap_or(0.0);
             n_batches += 1;
+            // One CE forward per LM position = `targets` length = `block` (see `window_to_batch` / `batch_from_mmap`).
             n_tokens += block;
         }
         start += stride;

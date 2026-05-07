@@ -17,6 +17,9 @@ pub struct NanoGptConfig {
     pub n_layer: usize,
     #[config(default = 4)]
     pub n_head: usize,
+    /// GQA: KV attention heads; **`0` = multi-head (`n_head`)**. Must divide `n_head`.
+    #[config(default = 0)]
+    pub n_kv_head: usize,
     pub n_embd: usize,
     #[config(default = 0.1)]
     pub dropout: f64,
@@ -61,6 +64,21 @@ impl NanoGptConfig {
             head,
         }
     }
+
+    /// Effective KV heads: `n_kv_head == 0` → `n_head`. **Panics** if `n_head % n_kv_head != 0`.
+    pub fn resolved_n_kv_head(&self) -> usize {
+        let nh = self.n_head.max(1);
+        let nkv = if self.n_kv_head == 0 {
+            nh
+        } else {
+            self.n_kv_head.max(1)
+        };
+        assert!(
+            nh % nkv == 0,
+            "n_head ({nh}) must be divisible by n_kv_head ({nkv})"
+        );
+        nkv
+    }
 }
 
 impl<B: Backend> Block<B> {
@@ -74,10 +92,12 @@ impl<B: Backend> Block<B> {
     }
 
     fn new(cfg: &NanoGptConfig, device: &Device<B>) -> Self {
+        let n_head = cfg.n_head.max(1);
+        let n_kv = cfg.resolved_n_kv_head();
         let attn_cfg = CausalSelfAttnConfig {
-            n_head: cfg.n_head.max(1),
-            n_kv_head: None,
-            head_dim: (cfg.n_embd / cfg.n_head.max(1)).max(1),
+            n_head,
+            n_kv_head: n_kv,
+            head_dim: (cfg.n_embd / n_head).max(1),
             use_rope: cfg.use_rope,
             rope_theta: cfg.rope_theta,
             max_seq: cfg.block_size,
@@ -134,30 +154,36 @@ impl<B: Backend> NanoGpt<B> {
     ) -> Tensor<B, 3> {
         let [batch, seq] = tokens.dims();
         let device = tokens.device();
-        let pos_start = cache
-            .as_ref()
-            .and_then(|caches| caches.first())
-            .and_then(|c| c.view().map(|(k, _)| k.dims()[2]))
-            .unwrap_or(0);
-        let pos =
-            Tensor::arange(pos_start as i64..(pos_start + seq) as i64, &device).reshape([1, seq]);
-        let pos = pos.repeat(0, batch);
-        let tok = self.tok_emb.forward(tokens);
         let use_rope = self
             .blocks
             .first()
             .map(|b| b.attn.uses_rope())
             .unwrap_or(true);
+        let tok = self.tok_emb.forward(tokens);
         let mut x = if use_rope {
             tok
         } else {
+            let pos_start = cache
+                .as_ref()
+                .and_then(|caches| caches.first())
+                .and_then(|c| c.view().map(|(k, _)| k.dims()[2]))
+                .unwrap_or(0);
+            let pos = Tensor::arange(pos_start as i64..(pos_start + seq) as i64, &device)
+                .reshape([1, seq])
+                .repeat(0, batch);
             let pos_e = self.pos_emb.forward(pos);
             tok + pos_e
         };
         for (idx, blk) in self.blocks.iter().enumerate() {
             if let Some(caches) = cache.as_deref_mut() {
                 while caches.len() <= idx {
-                    caches.push(KvCache::empty());
+                    caches.push(KvCache::with_capacity(
+                        batch,
+                        blk.attn.n_kv_head,
+                        self.block_size(),
+                        blk.attn.d_k,
+                        &device,
+                    ));
                 }
                 x = blk.forward(x, caches.get_mut(idx));
             } else {

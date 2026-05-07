@@ -34,13 +34,17 @@ pub fn apply_rope_qk<B: Backend>(
     cos: Tensor<B, 2>,
     sin: Tensor<B, 2>,
 ) -> (Tensor<B, 4>, Tensor<B, 4>) {
-    let [batch, n_head, seq, head_dim] = q.dims();
+    let [batch, n_head_q, seq, head_dim] = q.dims();
+    let [batch_k, n_head_k, seq_k, head_dim_k] = k.dims();
+    debug_assert_eq!(batch, batch_k);
+    debug_assert_eq!(seq, seq_k);
+    debug_assert_eq!(head_dim, head_dim_k);
     let half = head_dim / 2;
     let cos_b = cos.clone().reshape([1, 1, seq, half]);
     let sin_b = sin.clone().reshape([1, 1, seq, half]);
 
-    let q1 = q.clone().slice([0..batch, 0..n_head, 0..seq, 0..half]);
-    let q2 = q.slice([0..batch, 0..n_head, 0..seq, half..head_dim]);
+    let q1 = q.clone().slice([0..batch, 0..n_head_q, 0..seq, 0..half]);
+    let q2 = q.slice([0..batch, 0..n_head_q, 0..seq, half..head_dim]);
     let q_out = Tensor::cat(
         vec![
             q1.clone() * cos_b.clone() - q2.clone() * sin_b.clone(),
@@ -49,8 +53,8 @@ pub fn apply_rope_qk<B: Backend>(
         3,
     );
 
-    let k1 = k.clone().slice([0..batch, 0..n_head, 0..seq, 0..half]);
-    let k2 = k.slice([0..batch, 0..n_head, 0..seq, half..head_dim]);
+    let k1 = k.clone().slice([0..batch_k, 0..n_head_k, 0..seq_k, 0..half]);
+    let k2 = k.slice([0..batch_k, 0..n_head_k, 0..seq_k, half..head_dim]);
     let k_out = Tensor::cat(
         vec![
             k1.clone() * cos_b.clone() - k2.clone() * sin_b.clone(),

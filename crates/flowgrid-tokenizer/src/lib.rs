@@ -8,9 +8,18 @@ pub struct FgTokenizer {
     inner: tokenizers::Tokenizer,
 }
 
+/// State for [`FgTokenizer::decode_streaming`]; holds accumulated ids and last full decode.
 #[derive(Default)]
 pub struct DecoderState {
     ids: Vec<u32>,
+    prev_decoded_full: String,
+}
+
+impl DecoderState {
+    pub fn reset(&mut self) {
+        self.ids.clear();
+        self.prev_decoded_full.clear();
+    }
 }
 
 impl FgTokenizer {
@@ -53,16 +62,37 @@ impl FgTokenizer {
         self.inner.token_to_id("<pad>")
     }
 
-    /// Decode a stream by re-decoding accumulated ids and returning the delta text.
+    /// Decode a stream incrementally: **one** full `decode` per new token, delta via prefix / LCP vs
+    /// cached full string (avoids O(n) double-decodes per token).
+    ///
+    /// If the tokenizer rewrites earlier text (BPE / SPM), the fallback uses the longest UTF-8-safe
+    /// common prefix between the previous and current full decodes.
     pub fn decode_streaming(
         &self,
         state: &mut DecoderState,
         new_id: u32,
     ) -> Result<String, tokenizers::Error> {
-        let old = self.decode(&state.ids, true)?;
         state.ids.push(new_id);
-        let now = self.decode(&state.ids, true)?;
-        Ok(now.strip_prefix(&old).unwrap_or(&now).to_string())
+        let full = self.decode(&state.ids, true)?;
+
+        let delta = if let Some(rest) = full.strip_prefix(state.prev_decoded_full.as_str()) {
+            rest.to_string()
+        } else {
+            let common = state
+                .prev_decoded_full
+                .as_bytes()
+                .iter()
+                .zip(full.as_bytes())
+                .take_while(|(a, b)| a == b)
+                .count();
+            let cut = (0..=common)
+                .rev()
+                .find(|i| full.is_char_boundary(*i))
+                .unwrap_or(0);
+            full[cut..].to_string()
+        };
+        state.prev_decoded_full = full;
+        Ok(delta)
     }
 
     pub fn inner(&self) -> &tokenizers::Tokenizer {
