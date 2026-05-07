@@ -50,6 +50,8 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - `flowgrid-serve`: scheduler ingress now uses non-blocking queue dispatch and surfaces overload as explicit `scheduler queue overloaded` (mapped to OpenAI-style `429` at handler boundary).
 - `flowgrid-ml`: reproducible example **`golden_classical_ml`** producing machine-readable baseline report artifacts.
 - New ops scripts: `tools/serve_kpi_smoke.py`, `tools/check_train_repro.py`, `tools/build_kpi_achievement_report.py`.
+- New release-gate validator script: `tools/validate_release_gates.py` (train/eval/classical artifacts + optional KPI checks).
+- `flowgrid-ui` workload templates expanded with `train-lora-smoke`, `train-golden-llm`, and `eval-val-gate` plus template resolver tests.
 - **LLM stack (preview):** Burn-backed crates `flowgrid-tensor`, `flowgrid-tokenizer`, `flowgrid-data`, `flowgrid-model`, `flowgrid-train`, `flowgrid-cli` (`flowgrid-llm`), `flowgrid-serve`, `flowgrid-edit`, `flowgrid-ui`; overview [`docs/llm/overview.md`](docs/llm/overview.md). Workspace pins **`bincode =2.0.0-rc.3`** for `burn` 0.13 compatibility.
 - Examples: **`openai_assistants_e2e`** (Assistants thread → message → run → bounded poll) and **`openai_responses_stream_accumulate`** (Responses SSE + bounded text accumulation); README **`full` vs `enterprise`** subsection and **`docs/observability.md`** dashboard hints.
 - OpenAI **cursor list helpers**: **`ListPagesLimits`**, **`ListPage::after_cursor`**, **`AssistantsClient::list_all_typed`**, **`ThreadsClient::list_all_typed`**; **`ListPage`** forward-compatible **`extra`** map; Assistants **run steps** (**`ThreadRunStep`**, **`list_steps_typed`**) with fixtures + wiremock.
@@ -73,7 +75,9 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - `flowgrid-cli train`: expanded loop controls via **`--epochs`** and **`--batch-size`** to improve train-from-scratch/fine-tune reproducibility.
 - CI: added **`ml-core-smoke`** job; local mirror command **`just check-ml-core`**.
 - CI: added **`ml-repro-smoke`** gate (same-seed train runs must stay within configured CE delta tolerance).
+- CI: added **`ml-template-smoke`** and **`release-gates-smoke`** jobs for template coverage and artifact-gate validation.
 - `justfile`: added delivery recipes for `golden-llm-path`, `golden-classical-ml-path`, `repro-ml-smoke`, `kpi-serve-*`, and `ops-release-pack`.
+- `justfile`: added `template-train-lora-smoke`, `template-eval-val-gate`, and `validate-release-gates`.
 
 ### Fixed
 
@@ -87,6 +91,7 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 
 - README: security and privacy, platform limits (WASM/edge), serde stance, cancellation patterns, benchmarks, commercial/compatibility placeholders.
 - Added operational docs: `docs/loadtest-matrix.md`, `docs/runbook-quickstart.md`, and `docs/profile-pack.md`; expanded handbook/overview links for baseline KPIs, golden paths, and ops-ready artifact flow.
+- Added roadmap governance docs: `docs/runtime-resilience-program.md`, `docs/workload-templates.md`, and `docs/ops-readiness-30m.md`.
 
 ## [0.1.0] - YYYY-MM-DD
 

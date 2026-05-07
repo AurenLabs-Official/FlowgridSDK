@@ -51,6 +51,15 @@ golden-llm-path:
 golden-classical-ml-path:
     cargo run -p flowgrid-ml --example golden_classical_ml -- --out target/mlops/golden_classical_ml.json
 
+# UI-oriented workload template smokes.
+template-train-lora-smoke:
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli -- train --tokens target/mlops/golden_readme.bin --steps 8 --vocab 256 --block 32 --layers 2 --embd 64 --lora --lora-targets q,v,o --run-report-out target/mlops/train_lora_smoke_report.json
+
+template-eval-val-gate:
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli -- eval --dataset target/mlops/golden_readme.bin --split val --train-frac 0.8 --val-frac 0.1 --block 32 --stride 32 --run-report-out target/mlops/eval_val_gate_report.json
+
 # Quick reproducibility gate (same seed => same quality band).
 repro-ml-smoke:
     cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin
@@ -68,11 +77,18 @@ kpi-serve-hybrid:
 kpi-serve-cloud:
     python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 128 --max-tokens 64 --out target/mlops/kpi_cloud.json
 
+# Validate release gates from generated artifacts.
+validate-release-gates:
+    python tools/validate_release_gates.py
+
 # Aggregated ops-ready artifact loop.
 ops-release-pack:
     just golden-llm-path
     just golden-classical-ml-path
+    just template-train-lora-smoke
+    just template-eval-val-gate
     just repro-ml-smoke
+    just validate-release-gates
     python tools/build_kpi_achievement_report.py --out target/mlops/kpi_achievement_report.md
 
 # Supply chain (requires `cargo install cargo-deny cargo-audit`; advisory DB updated at runtime).

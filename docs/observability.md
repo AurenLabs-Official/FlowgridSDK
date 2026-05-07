@@ -47,3 +47,26 @@ histogram_quantile(0.95,
   sum(rate(<histogram_name>_bucket{job="your_service"}[5m])) by (le, flowgrid_provider, flowgrid_http_path))
 )
 ```
+
+## Flowgrid runtime SLO set
+
+Operational SLOs used in roadmap reviews:
+
+- p95 request latency (path/profile segmented)
+- timeout/error rate
+- queue saturation proxy (overload/429 share on serve endpoints)
+- retry pressure (`flowgrid.retry_count > 0` share)
+
+## Alerting thresholds (baseline bands)
+
+- p95 latency: alert when sustained > baseline profile band.
+- error rate: alert when sustained > `0.10`.
+- retry pressure: alert when non-zero retry share spikes above normal baseline.
+
+Treat these as initial bands; tighten quarterly from real workload data.
+
+## Review cadence
+
+- Monthly: operational KPI review.
+- Quarterly: roadmap/capacity review.
+- Semiannual: architecture + dependency risk review.

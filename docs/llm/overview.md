@@ -122,6 +122,12 @@ Non-streaming and streaming responses share these rules so clients do not need s
 `cargo test --workspace`, plus Linux `cargo test -p flowgrid --features full` and a **Windows** job with `CARGO_TARGET_DIR=target/win-full` to catch linker locking issues (see root `README.md`).
 
 ML reproducibility smoke is enforced in CI by running two same-seed train runs and checking report deltas (`tools/check_train_repro.py`).
+Release-gate validation is codified in `tools/validate_release_gates.py` (train/eval/classical artifacts, optional KPI artifacts).
+
+Workload template catalog and resilience governance:
+
+- `docs/workload-templates.md`
+- `docs/runtime-resilience-program.md`
 
 ## Dependency pin
 

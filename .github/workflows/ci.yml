@@ -50,6 +50,33 @@ jobs:
           cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
           python tools/check_train_repro.py --a target/mlops/repro_a.json --b target/mlops/repro_b.json --max-delta 1e-6
 
+  ml-template-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: workload template smoke
+        run: |
+          cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+          cargo run -p flowgrid-cli -- train --tokens target/mlops/golden_readme.bin --steps 8 --vocab 256 --block 32 --layers 2 --embd 64 --lora --lora-targets q,v,o --run-report-out target/mlops/train_lora_smoke_report.json
+          cargo run -p flowgrid-cli -- eval --dataset target/mlops/golden_readme.bin --split val --train-frac 0.8 --val-frac 0.1 --block 32 --stride 32 --run-report-out target/mlops/eval_val_gate_report.json
+
+  release-gates-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: generate artifacts for gate validation
+        run: |
+          cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+          cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/golden_readme.bin --steps 8 --epochs 2 --batch-size 2 --learn --seed 7 --run-report-out target/mlops/golden_llm_train.json
+          cargo run -p flowgrid-cli --profile local -- eval --dataset target/mlops/golden_readme.bin --split test --train-frac 0.8 --val-frac 0.1 --baseline-ppl 100.0 --max-regression-pct 100.0 --run-report-out target/mlops/golden_llm_eval.json
+          cargo run -p flowgrid-ml --example golden_classical_ml -- --out target/mlops/golden_classical_ml.json
+      - name: validate release gates
+        run: python tools/validate_release_gates.py
+
   rust:
     runs-on: ubuntu-latest
     steps:

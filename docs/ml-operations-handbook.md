@@ -147,6 +147,18 @@ Runbook for incidents and bring-up:
 - `docs/runbook-quickstart.md`
 - `docs/profile-pack.md`
 
+Runtime resilience program and drill cadence:
+
+- `docs/runtime-resilience-program.md`
+
+Workload template portfolio:
+
+- `docs/workload-templates.md`
+
+Long-horizon ops readiness and deprecation lifecycle:
+
+- `docs/ops-readiness-30m.md`
+
 ## Phase delivery baseline (12 weeks)
 
 ### Weeks 1-4
