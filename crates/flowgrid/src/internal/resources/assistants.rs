@@ -1,6 +1,7 @@
+use crate::internal::error::oai::Error;
 use crate::internal::oai::OpenAI;
 use crate::internal::oai::Result;
-use crate::internal::pagination::ListPage;
+use crate::internal::pagination::{ListPage, ListPagesLimits};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -127,6 +128,46 @@ impl<'a> AssistantsClient<'a> {
             .get_json_query("assistants", &q)
             .await?;
         Ok(v)
+    }
+
+    /// Walk [`AssistantsClient::list_typed`] until `has_more` is false or a limit trips.
+    ///
+    /// Uses the **`after`** cursor from [`ListPage::after_cursor`] (OpenAI default ascending lists).
+    /// Starts from `initial` query parameters; advances `after` using each page’s `last_id`.
+    pub async fn list_all_typed(
+        &self,
+        initial: &AssistantsListParams,
+        limits: ListPagesLimits,
+    ) -> Result<Vec<Assistant>> {
+        let max_pages = limits.max_pages.max(1);
+        let mut out = Vec::new();
+        let mut params = initial.clone();
+        for _ in 0..max_pages {
+            let page = self.list_typed(&params).await?;
+            let next_after = page.after_cursor();
+            let has_more_flag = page.has_more();
+            for item in page.data {
+                if let Some(cap) = limits.max_items {
+                    if out.len() >= cap as usize {
+                        return Ok(out);
+                    }
+                }
+                out.push(item);
+            }
+            match next_after {
+                Some(after) => params.after = Some(after),
+                None => {
+                    if has_more_flag {
+                        return Err(Error::Config(
+                            "OpenAI list: has_more is true but last_id is missing; cannot advance after cursor"
+                                .into(),
+                        ));
+                    }
+                    break;
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// `POST /assistants/{id}`

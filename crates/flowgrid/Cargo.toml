@@ -67,6 +67,12 @@ azure = []
 realtime = ["dep:tokio-tungstenite", "dep:http"]
 models = []
 beta = []
+# Derive retry sleep from provider rate-limit reset headers when `Retry-After` is absent (additive).
+rate-aware-retry = []
+# Documented profile hook for OpenAI-shaped HTTP gateways; see README.
+compat-openai = []
+# Unstable hook for `cargo fuzz` (SSE decoder); not covered by semver.
+sse-fuzz = []
 
 [dependencies]
 bytes = "1"

@@ -32,14 +32,16 @@ pub use crate::internal::error::oai::{
     ApiError, ApiErrorKind, Error, ErrorDetail, ErrorObject, Result,
 };
 pub use crate::internal::transport::oai::{ClientConfig, HttpTransport, ResponseMeta};
-pub use pagination::ListPage;
+pub use pagination::{ListPage, ListPagesLimits};
 
 pub use crate::internal::sse::oai::{OpenAiSseEventStream, SseEvent, SseStream};
 
 #[cfg(feature = "stream-types")]
 pub use crate::internal::stream_typing::{
+    accumulate_openai_chat_visible_text_into, accumulate_openai_response_visible_text_into,
     parse_openai_chat_stream_json, parse_openai_response_stream_json, OpenAiChatChunkChoice,
-    OpenAiChatCompletionChunk, OpenAiResponseStreamLine,
+    OpenAiChatCompletionChunk, OpenAiResponseStreamLine, OpenAiStreamTextLimits,
+    StreamTextAccumulateError,
 };
 
 pub use crate::internal::resources::{
@@ -54,7 +56,8 @@ pub use crate::internal::resources::{
 #[cfg(all(feature = "openai", feature = "assistants"))]
 pub use crate::internal::resources::{
     Assistant, AssistantsClient, AssistantsListParams, Thread, ThreadClient, ThreadMessage,
-    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunsClient, ThreadsClient,
+    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunStep, ThreadRunsClient,
+    ThreadsClient,
 };
 
 #[cfg(feature = "azure")]

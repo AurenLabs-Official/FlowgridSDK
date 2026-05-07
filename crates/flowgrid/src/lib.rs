@@ -113,8 +113,10 @@ pub use internal::clu::{AnthropicSseEventStream, SseEvent, SseStream};
 
 #[cfg(all(feature = "openai", feature = "stream-types"))]
 pub use internal::oai::{
+    accumulate_openai_chat_visible_text_into, accumulate_openai_response_visible_text_into,
     parse_openai_chat_stream_json, parse_openai_response_stream_json, OpenAiChatChunkChoice,
-    OpenAiChatCompletionChunk, OpenAiResponseStreamLine,
+    OpenAiChatCompletionChunk, OpenAiResponseStreamLine, OpenAiStreamTextLimits,
+    StreamTextAccumulateError,
 };
 
 #[cfg(all(feature = "anthropic", feature = "stream-types"))]
@@ -124,7 +126,7 @@ pub use internal::clu::{
 };
 
 #[cfg(feature = "openai")]
-pub use internal::oai::{ErrorDetail, ErrorObject, ListPage};
+pub use internal::oai::{ErrorDetail, ErrorObject, ListPage, ListPagesLimits};
 
 #[cfg(feature = "openai")]
 pub use internal::oai::{
@@ -139,7 +141,8 @@ pub use internal::oai::{
 #[cfg(all(feature = "openai", feature = "assistants"))]
 pub use internal::oai::{
     Assistant, AssistantsClient, AssistantsListParams, Thread, ThreadClient, ThreadMessage,
-    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunsClient, ThreadsClient,
+    ThreadMessagesClient, ThreadMessagesListParams, ThreadRun, ThreadRunStep, ThreadRunsClient,
+    ThreadsClient,
 };
 
 #[cfg(all(feature = "openai", feature = "azure"))]
@@ -172,3 +175,26 @@ pub use internal::clu::ModelsClient;
 
 #[cfg(all(feature = "anthropic", feature = "beta"))]
 pub use internal::clu::{BetaClient, BetaModel, BetaModelsListResponse};
+
+#[cfg(all(feature = "openai", feature = "sse-fuzz"))]
+#[doc(hidden)]
+pub mod sse_fuzz_support {
+    //! **Semver-exempt:** helper for `cargo fuzz` only.
+    use bytes::Bytes;
+    use std::io;
+
+    /// Decode successive SSE events from arbitrarily chunked UTF-8 bytes (for fuzzing).
+    pub async fn decode_sse_event_count(parts: Vec<Vec<u8>>) -> Result<usize, io::Error> {
+        let stream =
+            futures::stream::iter(parts.into_iter().map(|v| Ok::<Bytes, io::Error>(Bytes::from(v))));
+        let mut dec = crate::internal::sse::common::SseStream::new(stream);
+        let mut n = 0usize;
+        loop {
+            match dec.read_next_event().await? {
+                Some(_) => n += 1,
+                None => break,
+            }
+        }
+        Ok(n)
+    }
+}

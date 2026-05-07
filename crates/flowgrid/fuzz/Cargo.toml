@@ -1,0 +1,27 @@
+[package]
+name = "flowgrid-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+flowgrid = { path = "..", default-features = false, features = [
+    "openai",
+    "tls-rustls",
+    "sse-fuzz",
+] }
+libfuzzer-sys = "0.4"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "sse_chunks"
+path = "fuzz_targets/sse_chunks.rs"
+test = false
+doc = false
+bench = false

@@ -32,8 +32,11 @@ async fn per_call_timeout_fires_before_slow_response() {
         max_retries: 0,
         user_agent_suffix: None,
         request_hook: None,
+        http_client_builder_hook: None,
         retry_after_max: Duration::from_millis(2000),
         retry_if_response_status: None,
+        #[cfg(feature = "rate-aware-retry")]
+        rate_limit_aware_backoff: false,
         #[cfg(feature = "webhooks")]
         webhook_secret: None,
     };

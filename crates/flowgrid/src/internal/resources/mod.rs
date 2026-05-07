@@ -53,7 +53,7 @@ pub use admin::AdminClient;
 #[cfg(all(feature = "openai", feature = "assistants"))]
 pub use assistant_threads::{
     Thread, ThreadClient, ThreadMessage, ThreadMessagesClient, ThreadMessagesListParams, ThreadRun,
-    ThreadRunsClient, ThreadsClient,
+    ThreadRunStep, ThreadRunsClient, ThreadsClient,
 };
 #[cfg(all(feature = "openai", feature = "assistants"))]
 pub use assistants::{Assistant, AssistantsClient, AssistantsListParams};

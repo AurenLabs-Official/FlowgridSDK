@@ -9,7 +9,7 @@ pub mod error;
 pub mod execute_options;
 pub mod resources;
 mod retry_policy;
-mod sse;
+pub(crate) mod sse;
 mod stream_collect;
 mod stream_types;
 #[cfg(all(feature = "openai", feature = "stream-types"))]

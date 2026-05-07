@@ -22,6 +22,8 @@ pub(crate) fn parse_retry_after(headers: &HeaderMap) -> Option<Duration> {
     t.duration_since(now).ok()
 }
 
+/// Parse `Retry-After` first; otherwise exponential backoff capped by `cap`.
+#[allow(dead_code)] // Convenience wrapper; transports use [`retry_backoff_duration_openai`] / Anthropic variant.
 pub(crate) fn sleep_before_retry(
     headers: &HeaderMap,
     attempt: u32,
@@ -31,6 +33,102 @@ pub(crate) fn sleep_before_retry(
     parse_retry_after(headers)
         .unwrap_or_else(|| exponential_backoff(attempt))
         .min(cap)
+}
+
+#[cfg(all(feature = "openai", feature = "rate-aware-retry"))]
+fn openai_rate_limit_reset_delay(headers: &HeaderMap) -> Option<Duration> {
+    let rem = headers
+        .get("x-ratelimit-remaining-requests")?
+        .to_str()
+        .ok()?;
+    if rem.trim() != "0" {
+        return None;
+    }
+    let reset = headers
+        .get("x-ratelimit-reset-requests")?
+        .to_str()
+        .ok()?;
+    let ts = reset.parse::<u64>().ok()?;
+    let now = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    let now_s = now.as_secs();
+    if ts <= now_s {
+        return Some(Duration::ZERO);
+    }
+    Some(Duration::from_secs(ts - now_s))
+}
+
+#[cfg(all(feature = "anthropic", feature = "rate-aware-retry"))]
+fn anthropic_rate_limit_reset_delay(headers: &HeaderMap) -> Option<Duration> {
+    let rem = headers
+        .get("anthropic-ratelimit-requests-remaining")?
+        .to_str()
+        .ok()?;
+    if rem.trim() != "0" {
+        return None;
+    }
+    let reset = headers
+        .get("anthropic-ratelimit-requests-reset")?
+        .to_str()
+        .ok()?;
+    if let Ok(ts) = reset.parse::<u64>() {
+        let now = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        let now_s = now.as_secs();
+        if ts > now_s {
+            return Some(Duration::from_secs(ts - now_s));
+        }
+        return Some(Duration::ZERO);
+    }
+    let t = httpdate::parse_http_date(reset).ok()?;
+    let now = SystemTime::now();
+    if t > now {
+        t.duration_since(now).ok()
+    } else {
+        Some(Duration::ZERO)
+    }
+}
+
+#[cfg(feature = "openai")]
+pub(crate) fn retry_backoff_duration_openai(
+    headers: &HeaderMap,
+    attempt: u32,
+    exponential_backoff: impl Fn(u32) -> Duration,
+    cap: Duration,
+    #[allow(unused_variables)] rate_limit_aware: bool,
+) -> Duration {
+    if let Some(d) = parse_retry_after(headers) {
+        return d.min(cap);
+    }
+    #[cfg(feature = "rate-aware-retry")]
+    if rate_limit_aware {
+        if let Some(d) = openai_rate_limit_reset_delay(headers) {
+            return d.min(cap);
+        }
+    }
+    exponential_backoff(attempt).min(cap)
+}
+
+#[cfg(feature = "anthropic")]
+pub(crate) fn retry_backoff_duration_anthropic(
+    headers: &HeaderMap,
+    attempt: u32,
+    exponential_backoff: impl Fn(u32) -> Duration,
+    cap: Duration,
+    #[allow(unused_variables)] rate_limit_aware: bool,
+) -> Duration {
+    if let Some(d) = parse_retry_after(headers) {
+        return d.min(cap);
+    }
+    #[cfg(feature = "rate-aware-retry")]
+    if rate_limit_aware {
+        if let Some(d) = anthropic_rate_limit_reset_delay(headers) {
+            return d.min(cap);
+        }
+    }
+    exponential_backoff(attempt).min(cap)
 }
 
 /// Safe, length-capped excerpt for error `Display` / [`crate::internal::error`] fields.

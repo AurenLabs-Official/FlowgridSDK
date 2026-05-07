@@ -10,7 +10,7 @@
 
 use crate::internal::client::oai::OpenAI;
 use crate::internal::error::oai::{Error, Result};
-use crate::internal::transport::oai::{ClientConfig, HttpTransport};
+use crate::internal::transport::oai::{ClientConfig, HttpClientBuilderHook, HttpTransport};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,6 +24,7 @@ pub struct AzureClientBuilder {
     max_retries: Option<u32>,
     request_hook:
         Option<Arc<dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync>>,
+    http_client_builder_hook: Option<HttpClientBuilderHook>,
 }
 
 impl std::fmt::Debug for AzureClientBuilder {
@@ -37,6 +38,10 @@ impl std::fmt::Debug for AzureClientBuilder {
             .field(
                 "request_pre_send_hook",
                 &self.request_hook.as_ref().map(|_| "..."),
+            )
+            .field(
+                "http_client_builder_hook",
+                &self.http_client_builder_hook.as_ref().map(|_| "..."),
             )
             .finish()
     }
@@ -88,6 +93,14 @@ impl AzureClientBuilder {
         self
     }
 
+    pub fn http_client_builder_hook<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync + 'static,
+    {
+        self.http_client_builder_hook = Some(Arc::new(hook));
+        self
+    }
+
     /// Build a normal [`OpenAI`] client configured for Azure HTTP semantics.
     pub fn build(self) -> Result<OpenAI> {
         let api_key = self
@@ -112,10 +125,13 @@ impl AzureClientBuilder {
             max_retries: self.max_retries.unwrap_or(2),
             user_agent_suffix: Some("azure-openai".to_string()),
             request_hook: self.request_hook,
+            http_client_builder_hook: self.http_client_builder_hook,
             #[cfg(feature = "webhooks")]
             webhook_secret: None,
             retry_after_max: Duration::from_millis(2000),
             retry_if_response_status: None,
+            #[cfg(feature = "rate-aware-retry")]
+            rate_limit_aware_backoff: false,
         };
         let transport = HttpTransport::new(config)?;
         Ok(OpenAI { transport })

@@ -51,8 +51,11 @@ async fn retry_after_large_value_is_capped_messages() {
         max_retries: 2,
         user_agent_suffix: None,
         request_hook: None,
+        http_client_builder_hook: None,
         retry_after_max: Duration::from_millis(400),
         retry_if_response_status: None,
+        #[cfg(feature = "rate-aware-retry")]
+        rate_limit_aware_backoff: false,
     };
     let t = AnthropicHttpTransport::new(config).unwrap();
     let body =

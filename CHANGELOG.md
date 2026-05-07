@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OpenAI **cursor list helpers**: **`ListPagesLimits`**, **`ListPage::after_cursor`**, **`AssistantsClient::list_all_typed`**, **`ThreadsClient::list_all_typed`**; **`ListPage`** forward-compatible **`extra`** map; Assistants **run steps** (**`ThreadRunStep`**, **`list_steps_typed`**) with fixtures + wiremock.
+- **HTTP**: **`post_empty`**, **`http_client_builder_hook`** on OpenAI / Anthropic / Azure configs and builders; `docs/http.md` updated (proxies, mTLS story).
+- Streaming (**`stream-types`**): **`OpenAiStreamTextLimits`**, **`StreamTextAccumulateError`**, bounded **`accumulate_openai_*_visible_text_into`** helpers.
+- Cargo features **`rate-aware-retry`**, **`compat-openai`**, **`sse-fuzz`** (+ `crates/flowgrid/fuzz` SSE target); resilience and README docs updated.
 - Observability: `tracing` span `flowgrid.http.request` with retry, request id, and rate-limit fields; OpenTelemetry metric attribute `flowgrid.retry_count`; runbook `docs/observability.md`.
 - Optional **`cancel`** Cargo feature and `stream_next_until_cancelled` helper for cooperative SSE/stream shutdown.
 - Contract fixture naming convention, `tools/import_contract` scripts, and Criterion `hot_path` benchmarks.
@@ -19,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAI Responses streaming: **`parse_openai_response_stream_json`** / **`OpenAiResponseStreamLine`** (feature **`stream-types`**); Anthropic streaming test for **`content_block_start`** lines.
 - Optional **`retry_if_response_status`** on OpenAI/Anthropic **`ClientConfig`** and builders (replaces default retry-status rule when set).
 - Docs: [`docs/resilience.md`](docs/resilience.md), [`docs/http.md`](docs/http.md), [`docs/fuzzing.md`](docs/fuzzing.md); README proxy/timeout/smoke-matrix/zeroize note; Azure doc link for OpenAI-compatible bases.
-- OpenAI **Assistants** workflow (feature **`assistants`**): typed **`Assistant`**, **`AssistantsListParams`**, **`list_typed`** / **`create_typed`** / **`retrieve_typed`** / **`update_typed`**; **`ThreadsClient`**, **`ThreadClient`**, **`ThreadMessagesClient`**, **`ThreadRunsClient`** with typed **`Thread`**, **`ThreadMessage`**, **`ThreadRun`**; **`HttpTransport::get_json_query`** for list pagination; contract fixtures for assistants, threads, messages, runs, and assistant list pages; top-level **`ThreadsClient::update`**, **`update_typed`**, **`delete`** mirroring **`retrieve`**.
 
 ### Changed
 

@@ -36,11 +36,7 @@ mod oai_impl {
         /// `POST /batches/{id}/cancel`
         pub async fn cancel(&self, id: impl AsRef<str>) -> Result<Value> {
             let path = format!("batches/{}/cancel", id.as_ref());
-            let (v, _) = self
-                .inner
-                .transport
-                .post_json(&path, &serde_json::json!({}))
-                .await?;
+            let (v, _) = self.inner.transport.post_empty(&path).await?;
             Ok(v)
         }
     }
@@ -92,11 +88,7 @@ mod clu_impl {
 
         pub async fn cancel(&self, id: impl AsRef<str>) -> Result<Value> {
             let p = format!("messages/batches/{}/cancel", id.as_ref());
-            let (v, _) = self
-                .inner
-                .transport
-                .post_json(&p, &serde_json::json!({}))
-                .await?;
+            let (v, _) = self.inner.transport.post_empty(&p).await?;
             Ok(v)
         }
 

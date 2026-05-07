@@ -45,8 +45,11 @@ async fn retries_on_429_then_succeeds() {
         max_retries: 2,
         user_agent_suffix: None,
         request_hook: None,
+        http_client_builder_hook: None,
         retry_after_max: std::time::Duration::from_millis(2000),
         retry_if_response_status: None,
+        #[cfg(feature = "rate-aware-retry")]
+        rate_limit_aware_backoff: false,
         #[cfg(feature = "webhooks")]
         webhook_secret: None,
     };

@@ -5,6 +5,37 @@
 //! Requires Cargo features **`openai`** and **`stream-types`**.
 
 use serde::Deserialize;
+use thiserror::Error;
+
+/// Limits for [`accumulate_openai_chat_visible_text_into`] and
+/// [`accumulate_openai_response_visible_text_into`].
+///
+/// Defaults are **not** unbounded: adjust explicitly for long streams.
+#[derive(Debug, Clone)]
+pub struct OpenAiStreamTextLimits {
+    /// Maximum UTF-8 characters appended in total.
+    pub max_chars: usize,
+    /// Maximum parsed stream events processed (each successful parse counts once).
+    pub max_events: usize,
+}
+
+impl Default for OpenAiStreamTextLimits {
+    fn default() -> Self {
+        Self {
+            max_chars: 256 * 1024,
+            max_events: 50_000,
+        }
+    }
+}
+
+/// Bounded streaming text accumulation error.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum StreamTextAccumulateError {
+    #[error("exceeded max_chars ({0})")]
+    MaxChars(usize),
+    #[error("exceeded max_events ({0})")]
+    MaxEvents(usize),
+}
 
 /// One chunk from a streaming chat completion (`object` is usually `chat.completion.chunk`).
 #[derive(Debug, Clone, Deserialize)]
@@ -60,6 +91,54 @@ pub struct OpenAiResponseStreamLine {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Append visible assistant **string** `delta.content` fragments from one chat completion chunk.
+pub fn accumulate_openai_chat_visible_text_into(
+    out: &mut String,
+    chunk: &OpenAiChatCompletionChunk,
+    limits: &OpenAiStreamTextLimits,
+    events_seen: &mut usize,
+) -> Result<(), StreamTextAccumulateError> {
+    *events_seen = events_seen.saturating_add(1);
+    if *events_seen > limits.max_events {
+        return Err(StreamTextAccumulateError::MaxEvents(limits.max_events));
+    }
+    for ch in &chunk.choices {
+        if let Some(s) = ch.delta.get("content").and_then(|v| v.as_str()) {
+            if out.len().saturating_add(s.len()) > limits.max_chars {
+                return Err(StreamTextAccumulateError::MaxChars(limits.max_chars));
+            }
+            out.push_str(s);
+        }
+    }
+    Ok(())
+}
+
+/// Append visible text from a Responses stream line (e.g. `response.output_text.delta` with `delta`).
+pub fn accumulate_openai_response_visible_text_into(
+    out: &mut String,
+    line: &OpenAiResponseStreamLine,
+    limits: &OpenAiStreamTextLimits,
+    events_seen: &mut usize,
+) -> Result<(), StreamTextAccumulateError> {
+    *events_seen = events_seen.saturating_add(1);
+    if *events_seen > limits.max_events {
+        return Err(StreamTextAccumulateError::MaxEvents(limits.max_events));
+    }
+    let take_delta = matches!(
+        line.line_type.as_str(),
+        "response.output_text.delta" | "response.text.delta"
+    );
+    if take_delta {
+        if let Some(s) = line.extra.get("delta").and_then(|v| v.as_str()) {
+            if out.len().saturating_add(s.len()) > limits.max_chars {
+                return Err(StreamTextAccumulateError::MaxChars(limits.max_chars));
+            }
+            out.push_str(s);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,5 +165,31 @@ mod tests {
             v.extra.get("output_index").and_then(|x| x.as_u64()),
             Some(0)
         );
+    }
+
+    #[test]
+    fn accumulate_chat_respects_max_chars() {
+        let raw = r#"{"choices":[{"delta":{"content":"abcd"}}]}"#;
+        let chunk = serde_json::from_str::<OpenAiChatCompletionChunk>(raw).unwrap();
+        let limits = OpenAiStreamTextLimits {
+            max_chars: 3,
+            max_events: 10,
+        };
+        let mut out = String::new();
+        let mut n = 0;
+        let e = accumulate_openai_chat_visible_text_into(&mut out, &chunk, &limits, &mut n)
+            .unwrap_err();
+        assert_eq!(e, StreamTextAccumulateError::MaxChars(3));
+    }
+
+    #[test]
+    fn accumulate_response_text_delta() {
+        let raw = r#"{"type":"response.output_text.delta","delta":"x"}"#;
+        let line = serde_json::from_str::<OpenAiResponseStreamLine>(raw).unwrap();
+        let limits = OpenAiStreamTextLimits::default();
+        let mut out = String::new();
+        let mut n = 0;
+        accumulate_openai_response_visible_text_into(&mut out, &line, &limits, &mut n).unwrap();
+        assert_eq!(out, "x");
     }
 }

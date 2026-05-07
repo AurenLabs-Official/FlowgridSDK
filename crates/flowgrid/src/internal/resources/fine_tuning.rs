@@ -50,11 +50,7 @@ impl<'a> FineTuningJobsClient<'a> {
     /// `POST /fine_tuning/jobs/{id}/cancel`
     pub async fn cancel(&self, id: impl AsRef<str>) -> Result<Value> {
         let path = format!("fine_tuning/jobs/{}/cancel", id.as_ref());
-        let (v, _) = self
-            .inner
-            .transport
-            .post_json(&path, &serde_json::json!({}))
-            .await?;
+        let (v, _) = self.inner.transport.post_empty(&path).await?;
         Ok(v)
     }
 

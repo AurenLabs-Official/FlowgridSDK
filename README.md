@@ -170,16 +170,23 @@ Short names apply: **`Error`**, **`Result`**, **`ClientConfig`**, **`HttpTranspo
 - **`enterprise`**: enables `tracing` and `opentelemetry` together; combine with `full` if you need every OpenAI/Anthropic submodule as well.
 - OpenAI extras: `files`, `images`, `audio`, `moderations`, `batches`, `fine_tuning`, `evals`, `assistants`, `vector_stores`, `containers`, `admin`, `webhooks`, `azure`, `realtime`, `tracing`.
 - Anthropic extras: `batches`, `models`, `beta` (also gated by `anthropic`).
-- **`stream-types`**: optional typed parsing for streaming `data:` JSON (OpenAI chat chunks when `openai` is on; Anthropic message stream events when `anthropic` is on).
+- **`stream-types`**: optional typed parsing for streaming `data:` JSON (OpenAI chat chunks when `openai` is on; Anthropic message stream events when `anthropic` is on). Includes bounded helpers **`accumulate_openai_chat_visible_text_into`** / **`accumulate_openai_response_visible_text_into`** (see rustdoc).
+- **`rate-aware-retry`**: optional wait hints from provider rate-limit reset headers when **`Retry-After`** is absent (see [`docs/resilience.md`](docs/resilience.md)).
+- **`compat-openai`**: optional **`ClientBuilder::openai_http_compatible_profile()`** for OpenAI-shaped gateways; see **OpenAI-compatible HTTP servers** above.
+- **`sse-fuzz`**: unstable **`sse_fuzz_support`** module for local **`cargo fuzz`** targets only (not semver-stable).
 - **`opentelemetry`**: records `flowgrid.http.request.duration_ms` via the OpenTelemetry metrics API (install a meter provider in your app). Span/metric naming and dashboard hints are documented in [`docs/observability.md`](docs/observability.md).
 - **`cancel`**: exposes [`stream_next_until_cancelled`](https://docs.rs/flowgrid/latest/flowgrid/fn.stream_next_until_cancelled.html) for cooperative shutdown while reading SSE/event streams (see Cookbook).
 - **`full`**: enables all optional areas above **except** TLS switching and **except** `opentelemetry` (enable `opentelemetry` explicitly when needed).
 
 Shared feature name **`batches`** turns on batch APIs for whichever provider(s) you have enabled.
 
-## Request hook
+## Request hooks
 
-`ClientBuilder`, `AnthropicBuilder`, and `AzureClientBuilder` support **`request_pre_send_hook`**: a closure `Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder` run after default headers are applied and immediately before the request is sent. Use it for extra headers (for example correlation IDs). Do not log secrets there.
+`ClientBuilder`, `AnthropicBuilder`, and `AzureClientBuilder` support **`request_pre_send_hook`** for per-request headers and **`http_client_builder_hook`** to customize the shared **`reqwest::Client`** (see [`docs/http.md`](docs/http.md)).
+
+## OpenAI-compatible HTTP servers
+
+Many gateways expose an OpenAI-shaped **`/v1/...`** surface. **`flowgrid`** targets the official OpenAI routes used in this crate; forks may omit or diverge on **Assistants**, **Responses**, **Realtime**, etc. Enable optional feature **`compat-openai`** and call **`ClientBuilder::openai_http_compatible_profile()`** for conservative defaults; you still set **`base_url`** and should treat coverage as **best-effort** until you validate endpoints.
 
 ## Tests
 

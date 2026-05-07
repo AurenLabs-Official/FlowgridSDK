@@ -10,7 +10,9 @@ Set **`retry_if_response_status`** on **`OpenAiClientConfig`** / **`AnthropicCli
 
 ## Rate limits and `Retry-After`
 
-On **429**, the API may send **`Retry-After`**. The client parses it into wait time (capped by **`retry_after_max`**). Rate-limit headers are surfaced on response metadata and in **`tracing`** / docs for dashboards; the SDK does **not** add a second wait based solely on “remaining” header strings (avoids conflicting with **`Retry-After`**).
+On **429**, the API may send **`Retry-After`**. The client parses it into wait time (capped by **`retry_after_max`**). Rate-limit headers are surfaced on response metadata and in **`tracing`** / docs for dashboards.
+
+With Cargo feature **`rate-aware-retry`** and **`ClientBuilder::rate_limit_aware_backoff(true)`** (or the corresponding field on **`OpenAiClientConfig`** / **`AnthropicClientConfig`**), if **`Retry-After` is absent** on a retriable response, the client may derive a **single** wait from provider rate-limit **reset** headers when the **remaining** count hits zero (OpenAI **`x-ratelimit-*`**, Anthropic **`anthropic-ratelimit-*`**). This is **not** a duplicate of **`Retry-After`**: **`Retry-After` still wins** when present.
 
 ## Circuit breakers and bulkheads
 

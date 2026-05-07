@@ -1,0 +1,17 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "step_contract_1",
+      "object": "thread.run.step",
+      "created_at": 1698984975,
+      "run_id": "run_contract_1",
+      "thread_id": "thread_contract_1",
+      "type": "message_creation",
+      "status": "completed"
+    }
+  ],
+  "first_id": "step_contract_1",
+  "last_id": "step_contract_1",
+  "has_more": false
+}

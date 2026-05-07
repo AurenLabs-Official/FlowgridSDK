@@ -15,7 +15,9 @@ pub mod oai {
     use crate::internal::error::oai::{ApiError, ErrorObject, Result};
     use crate::internal::error::ProviderKind;
     use crate::internal::execute_options::ExecuteOptions;
-    use crate::internal::retry_policy::{body_snippet, parse_retry_after, sleep_before_retry};
+    use crate::internal::retry_policy::{
+        body_snippet, parse_retry_after, retry_backoff_duration_openai,
+    };
     use bytes::Bytes;
     use futures::Stream;
     use futures::TryStreamExt;
@@ -30,6 +32,12 @@ pub mod oai {
     /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
     /// response status still triggers a retry (same timing/backoff as built-in retries).
     pub type RetryIfResponseStatusFn = Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+
+    /// Customize the shared [`reqwest::Client`](reqwest::Client) (connector, pooling, TLS roots, …).
+    ///
+    /// Runs after the SDK sets its default [`ClientConfig::timeout`] on [`reqwest::ClientBuilder::timeout`].
+    pub type HttpClientBuilderHook =
+        Arc<dyn Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync>;
 
     /// Client configuration (clonable, shared by `OpenAI`).
     #[derive(Clone)]
@@ -54,6 +62,8 @@ pub mod oai {
         pub user_agent_suffix: Option<String>,
         /// Optional hook after default headers, immediately before send.
         pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
+        /// Optional hook to customize [`reqwest::Client`](reqwest::Client) construction.
+        pub http_client_builder_hook: Option<HttpClientBuilderHook>,
         /// Default webhook secret (feature `webhooks`).
         #[cfg(feature = "webhooks")]
         pub webhook_secret: Option<String>,
@@ -62,6 +72,10 @@ pub mod oai {
         /// When set, decides whether an HTTP **success** response with this status is retried (same
         /// timing/backoff as built-in retries). When `None`, the default rule applies (see module docs).
         pub retry_if_response_status: Option<RetryIfResponseStatusFn>,
+        /// When **feature `rate-aware-retry`** is enabled: if `Retry-After` is absent on a retriable
+        /// response, derive a wait from `x-ratelimit-*` reset headers (when remaining hits zero).
+        #[cfg(feature = "rate-aware-retry")]
+        pub rate_limit_aware_backoff: bool,
     }
 
     impl ClientConfig {
@@ -86,8 +100,11 @@ pub mod oai {
                 #[cfg(feature = "webhooks")]
                 webhook_secret: std::env::var("OPENAI_WEBHOOK_SECRET").ok(),
                 request_hook: None,
+                http_client_builder_hook: None,
                 retry_after_max: Duration::from_millis(2000),
                 retry_if_response_status: None,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: false,
             })
         }
     }
@@ -105,6 +122,10 @@ pub mod oai {
             d.field("max_retries", &self.max_retries);
             d.field("user_agent_suffix", &self.user_agent_suffix);
             d.field("request_hook", &self.request_hook.as_ref().map(|_| "..."));
+            d.field(
+                "http_client_builder_hook",
+                &self.http_client_builder_hook.as_ref().map(|_| "..."),
+            );
             #[cfg(feature = "webhooks")]
             d.field(
                 "webhook_secret",
@@ -115,6 +136,8 @@ pub mod oai {
                 "retry_if_response_status",
                 &self.retry_if_response_status.as_ref().map(|_| "..."),
             );
+            #[cfg(feature = "rate-aware-retry")]
+            d.field("rate_limit_aware_backoff", &self.rate_limit_aware_backoff);
             d.finish()
         }
     }
@@ -186,7 +209,13 @@ pub mod oai {
             if !path.is_empty() && !path.ends_with('/') {
                 config.base_url.set_path(&format!("{path}/"));
             }
-            let inner = Client::builder().timeout(config.timeout).build()?;
+            let mut b = Client::builder().timeout(config.timeout);
+            if let Some(h) = config.http_client_builder_hook.as_ref() {
+                b = h(b);
+            }
+            let inner = b.build().map_err(|e| {
+                crate::internal::error::oai::Error::Config(format!("reqwest client: {e}"))
+            })?;
             Ok(Self {
                 inner,
                 config: Arc::new(config),
@@ -283,8 +312,17 @@ pub mod oai {
                             let headers = resp.headers().clone();
                             drop(resp);
                             retries += 1;
-                            let delay =
-                                sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
+                            #[cfg(feature = "rate-aware-retry")]
+                            let rate_aware = self.config.rate_limit_aware_backoff;
+                            #[cfg(not(feature = "rate-aware-retry"))]
+                            let rate_aware = false;
+                            let delay = retry_backoff_duration_openai(
+                                &headers,
+                                (attempt + 1) as u32,
+                                backoff,
+                                cap,
+                                rate_aware,
+                            );
                             sleep(delay).await;
                             rb = clone;
                             attempt += 1;
@@ -567,6 +605,20 @@ pub mod oai {
                 .await
         }
 
+        /// POST with **no** body (no `Content-Type: application/json`).
+        pub async fn post_empty<T: serde::de::DeserializeOwned>(
+            &self,
+            path: &str,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json::<serde_json::Value, T>(
+                Method::POST,
+                path,
+                None,
+                ExecuteOptions::default(),
+            )
+            .await
+        }
+
         /// POST JSON returning raw bytes (e.g. `audio/speech`).
         pub async fn post_json_bytes<B: Serialize + ?Sized>(
             &self,
@@ -705,7 +757,9 @@ pub mod clu {
     use crate::internal::error::clu::{ApiError, ErrorBody, Result};
     use crate::internal::error::ProviderKind;
     use crate::internal::execute_options::ExecuteOptions;
-    use crate::internal::retry_policy::{body_snippet, parse_retry_after, sleep_before_retry};
+    use crate::internal::retry_policy::{
+        body_snippet, parse_retry_after, retry_backoff_duration_anthropic,
+    };
     use bytes::Bytes;
     use futures::{Stream, TryStreamExt};
     use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
@@ -719,6 +773,9 @@ pub mod clu {
     /// When set on [`ClientConfig`], replaces the default rule for whether an HTTP **success**
     /// response status still triggers a retry.
     pub type RetryIfResponseStatusFn = Arc<dyn Fn(StatusCode, &HeaderMap) -> bool + Send + Sync>;
+
+    pub type HttpClientBuilderHook =
+        Arc<dyn Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync>;
 
     /// Client configuration.
     #[derive(Clone)]
@@ -735,10 +792,13 @@ pub mod clu {
         pub max_retries: u32,
         pub user_agent_suffix: Option<String>,
         pub request_hook: Option<Arc<dyn Fn(RequestBuilder) -> RequestBuilder + Send + Sync>>,
+        pub http_client_builder_hook: Option<HttpClientBuilderHook>,
         /// Ceiling for delays taken from `Retry-After` while retrying (default 2 s).
         pub retry_after_max: Duration,
         /// When set, replaces the default rule for whether a successful HTTP response status triggers a retry.
         pub retry_if_response_status: Option<RetryIfResponseStatusFn>,
+        #[cfg(feature = "rate-aware-retry")]
+        pub rate_limit_aware_backoff: bool,
     }
 
     impl ClientConfig {
@@ -761,29 +821,38 @@ pub mod clu {
                 max_retries: 2,
                 user_agent_suffix: None,
                 request_hook: None,
+                http_client_builder_hook: None,
                 retry_after_max: Duration::from_millis(2000),
                 retry_if_response_status: None,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: false,
             })
         }
     }
 
     impl std::fmt::Debug for ClientConfig {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("ClientConfig")
-                .field("api_key", &"***")
-                .field("base_url", &self.base_url)
-                .field("anthropic_version", &self.anthropic_version)
-                .field("anthropic_beta", &self.anthropic_beta)
-                .field("timeout", &self.timeout)
-                .field("max_retries", &self.max_retries)
-                .field("user_agent_suffix", &self.user_agent_suffix)
-                .field("request_hook", &self.request_hook.as_ref().map(|_| "..."))
-                .field("retry_after_max", &self.retry_after_max)
-                .field(
-                    "retry_if_response_status",
-                    &self.retry_if_response_status.as_ref().map(|_| "..."),
-                )
-                .finish()
+            let mut d = f.debug_struct("ClientConfig");
+            d.field("api_key", &"***");
+            d.field("base_url", &self.base_url);
+            d.field("anthropic_version", &self.anthropic_version);
+            d.field("anthropic_beta", &self.anthropic_beta);
+            d.field("timeout", &self.timeout);
+            d.field("max_retries", &self.max_retries);
+            d.field("user_agent_suffix", &self.user_agent_suffix);
+            d.field("request_hook", &self.request_hook.as_ref().map(|_| "..."));
+            d.field(
+                "http_client_builder_hook",
+                &self.http_client_builder_hook.as_ref().map(|_| "..."),
+            );
+            d.field("retry_after_max", &self.retry_after_max);
+            d.field(
+                "retry_if_response_status",
+                &self.retry_if_response_status.as_ref().map(|_| "..."),
+            );
+            #[cfg(feature = "rate-aware-retry")]
+            d.field("rate_limit_aware_backoff", &self.rate_limit_aware_backoff);
+            d.finish()
         }
     }
 
@@ -852,7 +921,13 @@ pub mod clu {
             if !path.is_empty() && !path.ends_with('/') {
                 config.base_url.set_path(&format!("{path}/"));
             }
-            let inner = Client::builder().timeout(config.timeout).build()?;
+            let mut b = Client::builder().timeout(config.timeout);
+            if let Some(h) = config.http_client_builder_hook.as_ref() {
+                b = h(b);
+            }
+            let inner = b.build().map_err(|e| {
+                crate::internal::error::clu::Error::Config(format!("reqwest client: {e}"))
+            })?;
             Ok(Self {
                 inner,
                 config: Arc::new(config),
@@ -934,8 +1009,17 @@ pub mod clu {
                             let headers = resp.headers().clone();
                             drop(resp);
                             retries += 1;
-                            let delay =
-                                sleep_before_retry(&headers, (attempt + 1) as u32, backoff, cap);
+                            #[cfg(feature = "rate-aware-retry")]
+                            let rate_aware = self.config.rate_limit_aware_backoff;
+                            #[cfg(not(feature = "rate-aware-retry"))]
+                            let rate_aware = false;
+                            let delay = retry_backoff_duration_anthropic(
+                                &headers,
+                                (attempt + 1) as u32,
+                                backoff,
+                                cap,
+                                rate_aware,
+                            );
                             sleep(delay).await;
                             rb = clone;
                             attempt += 1;
@@ -1180,6 +1264,21 @@ pub mod clu {
         ) -> Result<(T, ResponseMeta)> {
             self.request_json(Method::POST, path, Some(body), "application/json", exec)
                 .await
+        }
+
+        /// POST with **no** body (no JSON `Content-Type`).
+        pub async fn post_empty<T: serde::de::DeserializeOwned>(
+            &self,
+            path: &str,
+        ) -> Result<(T, ResponseMeta)> {
+            self.request_json::<serde_json::Value, T>(
+                Method::POST,
+                path,
+                None,
+                "application/json",
+                ExecuteOptions::default(),
+            )
+            .await
         }
 
         pub async fn post_stream_bytes<B: Serialize + ?Sized>(

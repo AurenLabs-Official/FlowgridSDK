@@ -30,7 +30,7 @@ pub mod oai {
     #[cfg(feature = "vector_stores")]
     use crate::internal::resources::VectorStoresClient;
     use crate::internal::transport::oai::{
-        ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
+        ClientConfig, HttpClientBuilderHook, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -190,6 +190,9 @@ pub mod oai {
                 dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync,
             >,
         >,
+        http_client_builder_hook: Option<HttpClientBuilderHook>,
+        #[cfg(feature = "rate-aware-retry")]
+        rate_limit_aware_backoff: Option<bool>,
         #[cfg(feature = "webhooks")]
         webhook_secret: Option<String>,
         retry_if_response_status: Option<RetryIfResponseStatusFn>,
@@ -208,6 +211,15 @@ pub mod oai {
             d.field(
                 "request_pre_send_hook",
                 &self.request_hook.as_ref().map(|_| "..."),
+            );
+            d.field(
+                "http_client_builder_hook",
+                &self.http_client_builder_hook.as_ref().map(|_| "..."),
+            );
+            #[cfg(feature = "rate-aware-retry")]
+            d.field(
+                "rate_limit_aware_backoff",
+                &self.rate_limit_aware_backoff,
             );
             #[cfg(feature = "webhooks")]
             d.field(
@@ -240,6 +252,9 @@ pub mod oai {
                 max_retries: Some(c.max_retries),
                 user_agent_suffix: c.user_agent_suffix,
                 request_hook: None,
+                http_client_builder_hook: c.http_client_builder_hook,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: Some(c.rate_limit_aware_backoff),
                 #[cfg(feature = "webhooks")]
                 webhook_secret: c.webhook_secret,
                 retry_if_response_status: c.retry_if_response_status,
@@ -299,6 +314,33 @@ pub mod oai {
             self
         }
 
+        /// Customize the shared [`reqwest::Client`](reqwest::Client) after the SDK applies
+        /// [`ClientConfig::timeout`](ClientConfig::timeout) (custom connector, CA bundle, HTTP/2, …).
+        pub fn http_client_builder_hook<F>(mut self, hook: F) -> Self
+        where
+            F: Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync + 'static,
+        {
+            self.http_client_builder_hook = Some(Arc::new(hook));
+            self
+        }
+
+        /// Prefer rate-limit **reset** headers over raw exponential backoff when `Retry-After` is absent
+        /// (feature **`rate-aware-retry`**).
+        #[cfg(feature = "rate-aware-retry")]
+        pub fn rate_limit_aware_backoff(mut self, enabled: bool) -> Self {
+            self.rate_limit_aware_backoff = Some(enabled);
+            self
+        }
+
+        /// Conservative defaults for **OpenAI-shaped** HTTP servers (LiteLLM, vLLM, etc.).
+        ///
+        /// You still choose `base_url`; see README *OpenAI-compatible servers* for supported surface.
+        #[cfg(feature = "compat-openai")]
+        pub fn openai_http_compatible_profile(mut self) -> Self {
+            self.max_retries = Some(self.max_retries.unwrap_or(2).min(2));
+            self
+        }
+
         /// Default webhook signing secret (feature `webhooks`).
         #[cfg(feature = "webhooks")]
         pub fn webhook_secret(mut self, secret: impl Into<String>) -> Self {
@@ -336,10 +378,13 @@ pub mod oai {
                 max_retries: self.max_retries.unwrap_or(2),
                 user_agent_suffix: self.user_agent_suffix,
                 request_hook: self.request_hook,
+                http_client_builder_hook: self.http_client_builder_hook,
                 #[cfg(feature = "webhooks")]
                 webhook_secret: self.webhook_secret,
                 retry_after_max: Duration::from_millis(2000),
                 retry_if_response_status: self.retry_if_response_status,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: self.rate_limit_aware_backoff.unwrap_or(false),
             };
             let transport = HttpTransport::new(config)?;
             Ok(OpenAI { transport })
@@ -351,7 +396,7 @@ pub mod oai {
 pub mod clu {
     use crate::internal::error::clu::{Error, Result};
     use crate::internal::transport::clu::{
-        ClientConfig, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
+        ClientConfig, HttpClientBuilderHook, HttpTransport, ResponseMeta, RetryIfResponseStatusFn,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -417,28 +462,40 @@ pub mod clu {
         user_agent_suffix: Option<String>,
         request_hook:
             Option<Arc<dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync>>,
+        http_client_builder_hook: Option<HttpClientBuilderHook>,
+        #[cfg(feature = "rate-aware-retry")]
+        rate_limit_aware_backoff: Option<bool>,
         retry_if_response_status: Option<RetryIfResponseStatusFn>,
     }
 
     impl std::fmt::Debug for AnthropicBuilder {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("AnthropicBuilder")
-                .field("api_key", &self.api_key.as_ref().map(|_| "***"))
-                .field("base_url", &self.base_url)
-                .field("anthropic_version", &self.anthropic_version)
-                .field("anthropic_beta", &self.anthropic_beta)
-                .field("timeout", &self.timeout)
-                .field("max_retries", &self.max_retries)
-                .field("user_agent_suffix", &self.user_agent_suffix)
-                .field(
-                    "request_pre_send_hook",
-                    &self.request_hook.as_ref().map(|_| "..."),
-                )
-                .field(
-                    "retry_if_response_status",
-                    &self.retry_if_response_status.as_ref().map(|_| "..."),
-                )
-                .finish()
+            let mut d = f.debug_struct("AnthropicBuilder");
+            d.field("api_key", &self.api_key.as_ref().map(|_| "***"));
+            d.field("base_url", &self.base_url);
+            d.field("anthropic_version", &self.anthropic_version);
+            d.field("anthropic_beta", &self.anthropic_beta);
+            d.field("timeout", &self.timeout);
+            d.field("max_retries", &self.max_retries);
+            d.field("user_agent_suffix", &self.user_agent_suffix);
+            d.field(
+                "request_pre_send_hook",
+                &self.request_hook.as_ref().map(|_| "..."),
+            );
+            d.field(
+                "http_client_builder_hook",
+                &self.http_client_builder_hook.as_ref().map(|_| "..."),
+            );
+            #[cfg(feature = "rate-aware-retry")]
+            d.field(
+                "rate_limit_aware_backoff",
+                &self.rate_limit_aware_backoff,
+            );
+            d.field(
+                "retry_if_response_status",
+                &self.retry_if_response_status.as_ref().map(|_| "..."),
+            );
+            d.finish()
         }
     }
 
@@ -459,6 +516,9 @@ pub mod clu {
                 max_retries: Some(c.max_retries),
                 user_agent_suffix: c.user_agent_suffix,
                 request_hook: None,
+                http_client_builder_hook: c.http_client_builder_hook,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: Some(c.rate_limit_aware_backoff),
                 retry_if_response_status: c.retry_if_response_status,
             })
         }
@@ -508,6 +568,20 @@ pub mod clu {
             self
         }
 
+        pub fn http_client_builder_hook<F>(mut self, hook: F) -> Self
+        where
+            F: Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync + 'static,
+        {
+            self.http_client_builder_hook = Some(Arc::new(hook));
+            self
+        }
+
+        #[cfg(feature = "rate-aware-retry")]
+        pub fn rate_limit_aware_backoff(mut self, enabled: bool) -> Self {
+            self.rate_limit_aware_backoff = Some(enabled);
+            self
+        }
+
         /// Custom HTTP status retry rule (same semantics as OpenAI `ClientBuilder::retry_if_response_status`).
         pub fn retry_if_response_status<F>(mut self, f: F) -> Self
         where
@@ -535,8 +609,11 @@ pub mod clu {
                 max_retries: self.max_retries.unwrap_or(2),
                 user_agent_suffix: self.user_agent_suffix,
                 request_hook: self.request_hook,
+                http_client_builder_hook: self.http_client_builder_hook,
                 retry_after_max: Duration::from_millis(2000),
                 retry_if_response_status: self.retry_if_response_status,
+                #[cfg(feature = "rate-aware-retry")]
+                rate_limit_aware_backoff: self.rate_limit_aware_backoff.unwrap_or(false),
             };
             Ok(Anthropic {
                 transport: HttpTransport::new(config)?,

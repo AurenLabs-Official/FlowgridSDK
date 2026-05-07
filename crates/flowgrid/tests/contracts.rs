@@ -74,7 +74,9 @@ mod openai {
 
 #[cfg(all(feature = "openai", feature = "assistants"))]
 mod openai_assistants {
-    use flowgrid::{Assistant, ListPage, Thread, ThreadMessage, ThreadRun};
+    use flowgrid::{
+        Assistant, ListPage, Thread, ThreadMessage, ThreadRun, ThreadRunStep,
+    };
 
     #[test]
     fn openai_assistant_v1_deserialize() {
@@ -131,6 +133,19 @@ mod openai_assistants {
             |v| {
                 assert_eq!(v.data.len(), 1);
                 assert_eq!(v.data[0].id, "asst_contract_1");
+            }
+        );
+    }
+
+    #[test]
+    fn openai_thread_run_steps_list_v1_deserialize() {
+        contract_fixture!(
+            "fixtures/contracts/openai_thread_run_steps_list_v1_deserialize.json",
+            ListPage<ThreadRunStep>,
+            |v| {
+                assert_eq!(v.data.len(), 1);
+                assert_eq!(v.data[0].id, "step_contract_1");
+                assert_eq!(v.data[0].step_type.as_deref(), Some("message_creation"));
             }
         );
     }

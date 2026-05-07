@@ -1,8 +1,9 @@
 //! Threads, messages, and runs under `/v1/threads/*` (OpenAI Assistants workflow; feature `assistants`).
 
+use crate::internal::error::oai::Error;
 use crate::internal::oai::OpenAI;
 use crate::internal::oai::Result;
-use crate::internal::pagination::ListPage;
+use crate::internal::pagination::{ListPage, ListPagesLimits};
 use crate::internal::resources::assistants::AssistantsListParams;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -72,6 +73,29 @@ pub struct ThreadRun {
     pub thread_id: Option<String>,
     #[serde(default)]
     pub assistant_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// One step in an assistant run (`GET …/runs/{id}/steps`).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ThreadRunStep {
+    pub id: String,
+    #[serde(default)]
+    pub object: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<i64>,
+    #[serde(default)]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub assistant_id: Option<String>,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+    #[serde(rename = "type")]
+    #[serde(default)]
+    pub step_type: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(flatten)]
@@ -156,6 +180,43 @@ impl<'a> ThreadsClient<'a> {
         let q = params.query_pairs();
         let (v, _) = self.inner.transport.get_json_query("threads", &q).await?;
         Ok(v)
+    }
+
+    /// Cursor walk over [`ThreadsClient::list_typed`]; see [`AssistantsClient::list_all_typed`](crate::internal::resources::assistants::AssistantsClient::list_all_typed).
+    pub async fn list_all_typed(
+        &self,
+        initial: &AssistantsListParams,
+        limits: ListPagesLimits,
+    ) -> Result<Vec<Thread>> {
+        let max_pages = limits.max_pages.max(1);
+        let mut out = Vec::new();
+        let mut params = initial.clone();
+        for _ in 0..max_pages {
+            let page = self.list_typed(&params).await?;
+            let next_after = page.after_cursor();
+            let has_more_flag = page.has_more();
+            for item in page.data {
+                if let Some(cap) = limits.max_items {
+                    if out.len() >= cap as usize {
+                        return Ok(out);
+                    }
+                }
+                out.push(item);
+            }
+            match next_after {
+                Some(after) => params.after = Some(after),
+                None => {
+                    if has_more_flag {
+                        return Err(Error::Config(
+                            "OpenAI list: has_more is true but last_id is missing; cannot advance after cursor"
+                                .into(),
+                        ));
+                    }
+                    break;
+                }
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -359,21 +420,25 @@ impl<'a> ThreadRunsClient<'a> {
     /// `POST …/runs/{run_id}/cancel`
     pub async fn cancel(&self, run_id: impl AsRef<str>) -> Result<Value> {
         let path = format!("{}/{}/cancel", self.base_path(), run_id.as_ref());
-        let (v, _) = self
-            .inner
-            .transport
-            .post_json(&path, &serde_json::json!({}))
-            .await?;
+        let (v, _) = self.inner.transport.post_empty(&path).await?;
         Ok(v)
     }
 
     pub async fn cancel_typed(&self, run_id: impl AsRef<str>) -> Result<ThreadRun> {
         let path = format!("{}/{}/cancel", self.base_path(), run_id.as_ref());
-        let (v, _) = self
-            .inner
-            .transport
-            .post_json(&path, &serde_json::json!({}))
-            .await?;
+        let (v, _) = self.inner.transport.post_empty(&path).await?;
+        Ok(v)
+    }
+
+    /// `GET …/runs/{run_id}/steps`
+    pub async fn list_steps_typed(
+        &self,
+        run_id: impl AsRef<str>,
+        params: &AssistantsListParams,
+    ) -> Result<ListPage<ThreadRunStep>> {
+        let path = format!("{}/{}/steps", self.base_path(), run_id.as_ref());
+        let q = params.query_pairs();
+        let (v, _) = self.inner.transport.get_json_query(&path, &q).await?;
         Ok(v)
     }
 

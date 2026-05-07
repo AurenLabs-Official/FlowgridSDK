@@ -1,4 +1,7 @@
 /target
+**/fuzz/target
+crates/**/fuzz/target
 **/*.rs.bk
 .cargo/
 .cursor/
+.gitignore
