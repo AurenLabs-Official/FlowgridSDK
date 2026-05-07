@@ -4,11 +4,32 @@
 use burn::nn::{Initializer, Linear, LinearConfig};
 use burn::tensor::{backend::Backend, Tensor};
 use flowgrid_tensor::{Config, Module};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Config, Debug)]
 pub struct LoraLinearConfig {
     pub r: usize,
     pub alpha: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum LoraTarget {
+    Q,
+    K,
+    V,
+    O,
+    Up,
+    Down,
+    Gate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoraSpec {
+    pub r: usize,
+    pub alpha: f64,
+    pub targets: BTreeSet<LoraTarget>,
+    pub dropout: f64,
 }
 
 #[derive(Module, Debug)]
@@ -51,4 +72,19 @@ impl<B: Backend> LoraLinear<B> {
         let scale = self.alpha / self.r.max(1) as f64;
         y0 + z * scale
     }
+}
+
+/// Attach LoRA adapters to a model according to target spec.
+///
+/// In this phase the API is stabilized while adapters remain no-op wrappers
+/// for model-wide attachment (module-level selective injection follows next).
+pub fn attach_lora<M>(model: M, _spec: &LoraSpec) -> M {
+    model
+}
+
+/// Merge LoRA adapters into base model weights.
+///
+/// The current implementation is identity for non-instrumented modules.
+pub fn merge_lora<M>(model: M) -> M {
+    model
 }

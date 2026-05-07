@@ -1,4 +1,4 @@
-//! Hugging Face **`safetensors`** loader scaffold (GPT-2 family).
+//! Hugging Face safetensors loader helpers for GPT-2 / Llama / Mistral / Qwen.
 
 use burn::tensor::{backend::Backend, Tensor};
 use flowgrid_tensor::{FgError, FgResult};
@@ -6,6 +6,8 @@ use safetensors::SafeTensors;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
+
+use crate::hf;
 
 /// Parsed HF `config.json` subset for GPT-2 style models.
 #[derive(Debug, Deserialize)]
@@ -15,6 +17,59 @@ pub struct Gpt2StyleConfigJson {
     pub n_embd: usize,
     pub n_layer: usize,
     pub n_head: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HfArch {
+    Gpt2,
+    Llama,
+    Mistral,
+    Qwen2,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HfConfigJson {
+    pub architectures: Option<Vec<String>>,
+}
+
+pub fn infer_arch_from_config_text(text: &str) -> FgResult<HfArch> {
+    let cfg: HfConfigJson =
+        serde_json::from_str(text).map_err(|e| FgError::config(format!("config parse: {e}")))?;
+    let arch = cfg
+        .architectures
+        .as_ref()
+        .and_then(|v| v.first())
+        .map(|s| s.to_lowercase())
+        .ok_or_else(|| FgError::config("config.architectures[0] missing"))?;
+    if arch.contains("gpt2") {
+        Ok(HfArch::Gpt2)
+    } else if arch.contains("mistral") {
+        Ok(HfArch::Mistral)
+    } else if arch.contains("qwen") {
+        Ok(HfArch::Qwen2)
+    } else if arch.contains("llama") {
+        Ok(HfArch::Llama)
+    } else {
+        Err(FgError::config(format!("unsupported architecture: {arch}")))
+    }
+}
+
+pub fn expected_keys_for_arch(arch: HfArch) -> Vec<&'static str> {
+    match arch {
+        HfArch::Gpt2 => hf::gpt2::expected_keys(),
+        HfArch::Llama => hf::llama::expected_keys(),
+        HfArch::Mistral => hf::mistral::expected_keys(),
+        HfArch::Qwen2 => hf::qwen::expected_keys(),
+    }
+}
+
+pub fn validate_expected_keys(tensors: &HashMap<String, Vec<u8>>, arch: HfArch) -> FgResult<()> {
+    for key in expected_keys_for_arch(arch) {
+        if !tensors.contains_key(key) {
+            return Err(FgError::shape(format!("missing HF tensor key: {key}")));
+        }
+    }
+    Ok(())
 }
 
 /// Load named tensors from a `.safetensors` file into host memory (CPU bytes).
@@ -42,7 +97,22 @@ pub fn raw_f32_tensor<B: Backend>(
     }
     let floats: Vec<f32> = data
         .chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .map(|c| {
+            let arr = [c[0], c[1], c[2], c[3]];
+            f32::from_le_bytes(arr)
+        })
         .collect();
     Ok(Tensor::<B, 1>::from_floats(floats.as_slice(), device).reshape(shape))
+}
+
+pub fn bf16_bytes_to_f32(data: &[u8]) -> FgResult<Vec<f32>> {
+    if data.len() % 2 != 0 {
+        return Err(FgError::shape("bf16 byte length must be even"));
+    }
+    let mut out = Vec::with_capacity(data.len() / 2);
+    for c in data.chunks_exact(2) {
+        let hi = u16::from_le_bytes([c[0], c[1]]) as u32;
+        out.push(f32::from_bits(hi << 16));
+    }
+    Ok(out)
 }

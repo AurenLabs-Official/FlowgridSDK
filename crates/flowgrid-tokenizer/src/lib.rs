@@ -8,6 +8,11 @@ pub struct FgTokenizer {
     inner: tokenizers::Tokenizer,
 }
 
+#[derive(Default)]
+pub struct DecoderState {
+    ids: Vec<u32>,
+}
+
 impl FgTokenizer {
     /// Load from `tokenizer.json`.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, tokenizers::Error> {
@@ -26,6 +31,30 @@ impl FgTokenizer {
 
     pub fn vocab_size(&self) -> usize {
         self.inner.get_vocab_size(true)
+    }
+
+    pub fn bos_id(&self) -> Option<u32> {
+        self.inner.token_to_id("<bos>")
+    }
+
+    pub fn eos_id(&self) -> Option<u32> {
+        self.inner.token_to_id("<eos>")
+    }
+
+    pub fn pad_id(&self) -> Option<u32> {
+        self.inner.token_to_id("<pad>")
+    }
+
+    /// Decode a stream by re-decoding accumulated ids and returning the delta text.
+    pub fn decode_streaming(
+        &self,
+        state: &mut DecoderState,
+        new_id: u32,
+    ) -> Result<String, tokenizers::Error> {
+        let old = self.decode(&state.ids, true)?;
+        state.ids.push(new_id);
+        let now = self.decode(&state.ids, true)?;
+        Ok(now.strip_prefix(&old).unwrap_or(&now).to_string())
     }
 
     pub fn inner(&self) -> &tokenizers::Tokenizer {

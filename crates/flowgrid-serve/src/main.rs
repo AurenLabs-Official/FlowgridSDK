@@ -1,55 +1,38 @@
-//! Minimal OpenAI-shaped HTTP server (SSE line compatible with `flowgrid` streaming tests).
+//! OpenAI-shaped HTTP server (`/v1/chat/completions` + `/v1/responses`).
 //!
 //! ```text
 //! cargo run -p flowgrid-serve
 //! ```
 
-use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::post;
-use axum::Json;
 use axum::Router;
-use serde::Deserialize;
-use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
-use uuid::Uuid;
 
-#[derive(Clone, Default)]
-struct AppState {
-    _placeholder: (),
+mod auth;
+mod handlers;
+mod error;
+mod ratelimit;
+mod scheduler;
+mod sse;
+mod types;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub scheduler: scheduler::Scheduler,
+    pub auth: auth::AuthConfig,
+    pub rate: ratelimit::RateLimitState,
 }
 
-#[derive(Debug, Deserialize)]
-struct ChatReq {
-    model: String,
-    stream: Option<bool>,
+async fn health() -> impl IntoResponse {
+    (axum::http::StatusCode::OK, "ok")
 }
 
-async fn chat_completions(
-    axum::extract::State(_st): axum::extract::State<Arc<AppState>>,
-    Json(body): Json<ChatReq>,
-) -> axum::response::Response {
-    if body.stream == Some(true) {
-        let id = Uuid::new_v4();
-        let sse = format!(
-            "event: delta\ndata: {{\"id\":\"{}\",\"object\":\"chat.completion.chunk\"}}\n\n",
-            id
-        );
-        ([(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")], sse).into_response()
-    } else {
-        (
-            axum::http::StatusCode::OK,
-            Json(json!({
-                "id": Uuid::new_v4().to_string(),
-                "object": "chat.completion",
-                "model": body.model,
-                "choices": [{ "index": 0, "message": { "role": "assistant", "content": "flowgrid-serve stub" } }]
-            })),
-        )
-            .into_response()
-    }
+async fn ready() -> impl IntoResponse {
+    (axum::http::StatusCode::OK, "ready")
 }
 
 #[tokio::main]
@@ -57,10 +40,38 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let state = Arc::new(AppState::default());
+    let auth_cfg = auth::AuthConfig::from_env();
+    let max_body = std::env::var("FLOWGRID_SERVE_MAX_BODY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1024 * 1024);
+    let rps = std::env::var("FLOWGRID_SERVE_RPS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(32);
+    let rate_state = ratelimit::RateLimitState::new(rps);
+    let scheduler = scheduler::Scheduler::start(scheduler::SchedulerConfig {
+        queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(64),
+        request_timeout_ms: std::env::var("FLOWGRID_SERVE_REQUEST_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(10_000),
+    });
+    let state = Arc::new(AppState {
+        scheduler,
+        auth: auth_cfg,
+        rate: rate_state,
+    });
     let app = Router::new()
-        .route("/v1/chat/completions", post(chat_completions))
+        .route("/health", axum::routing::get(health))
+        .route("/ready", axum::routing::get(ready))
+        .route("/v1/chat/completions", post(handlers::chat::chat_completions))
+        .route("/v1/responses", post(handlers::responses::responses))
         .with_state(state)
+        .layer(RequestBodyLimitLayer::new(max_body))
         .layer(TraceLayer::new_for_http());
     let addr: SocketAddr = "127.0.0.1:9000".parse().expect("addr");
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");

@@ -19,6 +19,7 @@ fn debug_loss_runs_on_tiny_bin() {
         vocab_size: 32,
         block_size: 8,
         n_layer: 1,
+        n_head: 4,
         n_embd: 16,
         dropout: 0.0,
     };

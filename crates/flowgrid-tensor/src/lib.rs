@@ -3,6 +3,8 @@
 //! The workspace enables **CPU** (`ndarray`) by default. Opt into GPU features on this crate:
 //! `wgpu`, `cuda`, `tch`, `metal`, or `candle` (maps to Burn optional backends).
 
+pub mod obs;
+
 pub use burn::config::Config;
 pub use burn::module::Module;
 pub use burn::record::FullPrecisionSettings;

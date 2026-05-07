@@ -1374,6 +1374,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowgrid-checkpoint"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flowgrid-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "flowgrid-cli"
 version = "0.1.0"
 dependencies = [
@@ -1381,13 +1391,16 @@ dependencies = [
  "burn",
  "burn-ndarray",
  "clap",
+ "flowgrid-checkpoint",
  "flowgrid-data",
+ "flowgrid-eval",
  "flowgrid-model",
  "flowgrid-tensor",
  "flowgrid-tokenizer",
  "flowgrid-train",
  "num-traits",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
  "tracing",
@@ -1414,6 +1427,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowgrid-eval"
+version = "0.1.0"
+dependencies = [
+ "burn",
+ "flowgrid-data",
+ "flowgrid-model",
+ "flowgrid-train",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "flowgrid-model"
 version = "0.1.0"
 dependencies = [
@@ -1429,10 +1454,13 @@ dependencies = [
 name = "flowgrid-serve"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "tokio",
+ "tower",
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
@@ -4358,6 +4386,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -4490,6 +4519,7 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",

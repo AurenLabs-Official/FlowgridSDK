@@ -15,12 +15,15 @@ path = "src/main.rs"
 flowgrid-tensor = { path = "../flowgrid-tensor" }
 flowgrid-model = { path = "../flowgrid-model" }
 flowgrid-train = { path = "../flowgrid-train" }
+flowgrid-eval = { path = "../flowgrid-eval" }
 flowgrid-data = { path = "../flowgrid-data" }
+flowgrid-checkpoint = { path = "../flowgrid-checkpoint" }
 flowgrid-tokenizer = { path = "../flowgrid-tokenizer" }
 burn = { workspace = true }
 burn-ndarray = { workspace = true }
 clap.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 toml = "0.8"
 anyhow.workspace = true
 tracing.workspace = true

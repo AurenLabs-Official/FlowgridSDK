@@ -9,6 +9,16 @@ use std::path::Path;
 
 use flowgrid_data::TokenMmap;
 
+#[derive(Debug, Clone)]
+pub struct TrainerConfig {
+    pub grad_accum: usize,
+    pub max_grad_norm: Option<f32>,
+    pub warmup: usize,
+    pub base_lr: f64,
+    pub min_lr: f64,
+    pub total_steps: usize,
+}
+
 /// Language-modeling batch: `tokens` and one-step-ahead `targets` (same shape `[1, seq]`).
 #[derive(Debug, Clone)]
 pub struct LmBatch<B: AutodiffBackend> {
