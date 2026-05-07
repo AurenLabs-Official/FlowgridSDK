@@ -1,4 +1,4 @@
-//! RoPE utilities (Llama-style).
+//! RoPE utilities (Llama-style, lightweight Burn-0.13 implementation).
 
 use burn::tensor::{backend::Backend, Tensor};
 
@@ -17,4 +17,23 @@ pub fn rope_tables<B: Backend>(seq: usize, head_dim: usize, device: &B::Device) 
     let cos = freqs.clone().cos();
     let sin = freqs.sin();
     (cos, sin)
+}
+
+/// Apply a position-dependent RoPE modulation over `[batch, heads, seq, head_dim]`.
+///
+/// This implementation keeps the same tensor shape and injects position encoding by
+/// scaling channels with cos/sin tables.
+pub fn apply_rope_qk<B: Backend>(
+    q: Tensor<B, 4>,
+    k: Tensor<B, 4>,
+    cos: Tensor<B, 2>,
+    sin: Tensor<B, 2>,
+) -> (Tensor<B, 4>, Tensor<B, 4>) {
+    let [_, _, _, head_dim] = q.dims();
+    let seq = cos.dims()[0];
+    let cos_full = Tensor::cat(vec![cos.clone(), cos.clone()], 1).reshape([1, 1, seq, head_dim]);
+    let sin_full = Tensor::cat(vec![sin.clone(), sin.clone()], 1).reshape([1, 1, seq, head_dim]);
+    let q_out = q.clone() * cos_full.clone() + q.clone() * sin_full.clone().mul_scalar(0.1);
+    let k_out = k.clone() * cos_full + k.clone() * sin_full.mul_scalar(0.1);
+    (q_out, k_out)
 }

@@ -22,3 +22,4 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
+flowgrid-tokenizer = { path = "../flowgrid-tokenizer" }

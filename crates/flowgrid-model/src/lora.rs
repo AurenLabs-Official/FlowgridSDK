@@ -72,6 +72,26 @@ impl<B: Backend> LoraLinear<B> {
         let scale = self.alpha / self.r.max(1) as f64;
         y0 + z * scale
     }
+
+    pub fn merged_linear(&self) -> Linear<B> {
+        let w_base = self.base.weight.val();
+        let w_a = self.lora_a.weight.val();
+        let w_b = self.lora_b.weight.val();
+        let scale = self.alpha / self.r.max(1) as f64;
+        let delta = w_a.matmul(w_b).mul_scalar(scale);
+        let merged_w = w_base.clone() + delta;
+
+        let dims = merged_w.dims();
+        let mut out = LinearConfig::new(dims[0], dims[1])
+            .with_bias(self.base.bias.is_some())
+            .with_initializer(Initializer::Zeros)
+            .init(&merged_w.device());
+        out.weight = out.weight.map(|_| merged_w.clone());
+        if let (Some(base_b), Some(out_b)) = (&self.base.bias, out.bias.take()) {
+            out.bias = Some(out_b.map(|_| base_b.val()));
+        }
+        out
+    }
 }
 
 /// Attach LoRA adapters to a model according to target spec.
@@ -82,9 +102,20 @@ pub fn attach_lora<M>(model: M, _spec: &LoraSpec) -> M {
     model
 }
 
-/// Merge LoRA adapters into base model weights.
-///
-/// The current implementation is identity for non-instrumented modules.
-pub fn merge_lora<M>(model: M) -> M {
-    model
+pub trait MergeLoraModel {
+    type Output;
+    fn merge_lora_model(self) -> Self::Output;
+}
+
+impl<B: Backend> MergeLoraModel for LoraLinear<B> {
+    type Output = Linear<B>;
+
+    fn merge_lora_model(self) -> Self::Output {
+        self.merged_linear()
+    }
+}
+
+/// Merge LoRA adapters into base model weights for supported adapter modules.
+pub fn merge_lora<M: MergeLoraModel>(model: M) -> M::Output {
+    model.merge_lora_model()
 }

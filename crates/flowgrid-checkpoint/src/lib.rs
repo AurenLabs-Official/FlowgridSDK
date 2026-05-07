@@ -99,6 +99,13 @@ pub fn load_nano_gpt_config(dir: impl AsRef<Path>) -> Result<NanoGptConfig> {
     Ok(m.to_nano_gpt_config())
 }
 
+pub fn resolve_tokenizer_path(dir: impl AsRef<Path>) -> Result<Option<PathBuf>> {
+    let dir = dir.as_ref();
+    let manifest = load_manifest(dir)?;
+    let path = manifest.tokenizer_path.map(PathBuf::from);
+    Ok(path.map(|p| if p.is_absolute() { p } else { dir.join(p) }))
+}
+
 pub fn save_lora_spec(dir: impl AsRef<Path>, spec: &LoraSpec) -> Result<()> {
     let dir = dir.as_ref();
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;

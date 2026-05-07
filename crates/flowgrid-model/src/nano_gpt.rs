@@ -34,8 +34,8 @@ pub struct NanoGpt<B: Backend> {
 pub struct Block<B: Backend> {
     attn: CausalSelfAttn<B>,
     mlp: Mlp<B>,
-    pre_norm: Norm,
-    post_norm: Norm,
+    pre_norm: Norm<B>,
+    post_norm: Norm<B>,
 }
 
 impl NanoGptConfig {
@@ -69,8 +69,8 @@ impl<B: Backend> Block<B> {
         Self {
             attn: attn_cfg.init(cfg.n_embd, device),
             mlp: Mlp::new(cfg.n_embd, cfg.dropout, device),
-            pre_norm: NormConfig::new().init(),
-            post_norm: NormConfig::new().init(),
+            pre_norm: NormConfig::new(cfg.n_embd).init(device),
+            post_norm: NormConfig::new(cfg.n_embd).init(device),
         }
     }
 
@@ -102,7 +102,12 @@ impl<B: Backend> NanoGpt<B> {
     ) -> Tensor<B, 3> {
         let [batch, seq] = tokens.dims();
         let device = tokens.device();
-        let pos = Tensor::arange(0..seq as i64, &device).reshape([1, seq]);
+        let pos_start = cache
+            .as_ref()
+            .and_then(|caches| caches.first())
+            .and_then(|c| c.view().map(|(k, _)| k.dims()[2]))
+            .unwrap_or(0);
+        let pos = Tensor::arange(pos_start as i64..(pos_start + seq) as i64, &device).reshape([1, seq]);
         let pos = pos.repeat(0, batch);
         let tok = self.tok_emb.forward(tokens);
         let pos_e = self.pos_emb.forward(pos);

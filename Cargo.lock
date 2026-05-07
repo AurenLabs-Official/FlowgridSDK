@@ -1443,6 +1443,7 @@ name = "flowgrid-model"
 version = "0.1.0"
 dependencies = [
  "burn",
+ "burn-ndarray",
  "flowgrid-tensor",
  "safetensors 0.4.5",
  "serde",
@@ -1456,6 +1457,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "flowgrid-tokenizer",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

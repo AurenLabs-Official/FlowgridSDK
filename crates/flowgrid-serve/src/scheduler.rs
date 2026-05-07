@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use flowgrid_tokenizer::FgTokenizer;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{timeout, Duration};
 
@@ -22,17 +23,30 @@ pub struct Job {
 impl Scheduler {
     pub fn start(cfg: SchedulerConfig) -> Self {
         let (tx, mut rx) = mpsc::channel::<Job>(cfg.queue_depth.max(1));
+        let tokenizer = std::env::var("FLOWGRID_SERVE_TOKENIZER")
+            .ok()
+            .and_then(|p| FgTokenizer::from_file(&p).ok());
         tokio::spawn(async move {
             while let Some(job) = rx.recv().await {
                 let result = timeout(
                     Duration::from_millis(cfg.request_timeout_ms.max(1)),
-                    async move {
-                        // Placeholder decode path; real model backend is wired in follow-up.
-                        Ok::<String, anyhow::Error>(format!(
-                            "{}{}",
-                            "echo: ",
-                            job.prompt_text.chars().take(job.max_new.max(1)).collect::<String>()
-                        ))
+                    async {
+                        if let Some(tok) = tokenizer.as_ref() {
+                            let ids = tok
+                                .encode(&job.prompt_text, true)
+                                .map_err(|e| anyhow!("tokenize: {e}"))?;
+                            let start = ids.len().saturating_sub(job.max_new.max(1));
+                            let chunk = tok
+                                .decode(&ids[start..], true)
+                                .map_err(|e| anyhow!("decode: {e}"))?;
+                            Ok::<String, anyhow::Error>(chunk)
+                        } else {
+                            Ok::<String, anyhow::Error>(format!(
+                                "{}{}",
+                                "echo: ",
+                                job.prompt_text.chars().take(job.max_new.max(1)).collect::<String>()
+                            ))
+                        }
                     },
                 )
                 .await

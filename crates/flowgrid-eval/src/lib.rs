@@ -12,6 +12,8 @@ pub struct EvalReport {
     pub ppl: f32,
     pub tokens_per_sec: f32,
     pub peak_mem_mb: f32,
+    pub dataset_len_tokens: usize,
+    pub block_size: usize,
 }
 
 pub fn perplexity<B: AutodiffBackend>(
@@ -51,5 +53,15 @@ pub fn perplexity<B: AutodiffBackend>(
         ppl,
         tokens_per_sec: n_tokens as f32 / elapsed,
         peak_mem_mb: 0.0,
+        dataset_len_tokens: mmap.len_tokens(),
+        block_size: block,
     }
+}
+
+pub fn check_regression(report: &EvalReport, baseline_ppl: f32, max_regression_pct: f32) -> bool {
+    if baseline_ppl <= 0.0 {
+        return true;
+    }
+    let allowed = baseline_ppl * (1.0 + max_regression_pct.max(0.0) / 100.0);
+    report.ppl <= allowed
 }

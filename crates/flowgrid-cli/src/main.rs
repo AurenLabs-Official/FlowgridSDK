@@ -12,14 +12,15 @@ use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::tensor::{Int, Tensor};
 use clap::{Parser, Subcommand};
 use flowgrid_checkpoint::{
-    load_lora_spec, load_nano_gpt_config, save_lora_spec, save_nano_gpt_checkpoint,
+    load_lora_spec, load_nano_gpt_config, resolve_tokenizer_path, save_lora_spec,
+    save_nano_gpt_checkpoint,
 };
 use flowgrid_data::{write_token_blob, TokenMmap};
-use flowgrid_eval::perplexity;
+use flowgrid_eval::{check_regression, perplexity};
 use flowgrid_model::{NanoGpt, NanoGptConfig};
-use flowgrid_model::lora::{attach_lora, merge_lora, LoraSpec, LoraTarget};
+use flowgrid_model::lora::{attach_lora, LoraSpec, LoraTarget};
 use flowgrid_tokenizer::{DecoderState, FgTokenizer};
-use flowgrid_train::clip::clip_grad_norm;
+use flowgrid_train::clip::grad_clip_config;
 use flowgrid_train::loop_train::{batch_from_mmap, debug_loss_over_mmap, loss_for_window};
 use flowgrid_train::schedule::lr as scheduled_lr;
 use std::path::PathBuf;
@@ -73,6 +74,8 @@ enum Cmd {
         max_grad_norm: Option<f32>,
         #[arg(long, default_value_t = 1e-5_f64)]
         min_lr: f64,
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
         #[arg(long)]
         save: Option<PathBuf>,
         #[arg(long)]
@@ -123,6 +126,10 @@ enum Cmd {
         layers: usize,
         #[arg(long, default_value_t = 128)]
         embd: usize,
+        #[arg(long)]
+        baseline_ppl: Option<f32>,
+        #[arg(long, default_value_t = 5.0)]
+        max_regression_pct: f32,
     },
     MergeLora {
         #[arg(long)]
@@ -159,7 +166,7 @@ fn main() -> Result<()> {
                 tok.encode(&text, true)
                     .map_err(|e| anyhow::anyhow!("tokenize input: {e}"))?
             } else {
-                text.bytes().map(|b| b as u32).collect()
+                anyhow::bail!("tokenizer-native mode requires --tokenizer (or use --byte-level)");
             };
             write_token_blob(&output, &ids).with_context(|| format!("write {}", output.display()))?;
             println!("wrote {} token ids -> {}", ids.len(), output.display());
@@ -177,6 +184,7 @@ fn main() -> Result<()> {
             warmup,
             max_grad_norm,
             min_lr,
+            seed,
             save,
             resume,
             tokenizer,
@@ -187,8 +195,15 @@ fn main() -> Result<()> {
         } => {
             let mmap = TokenMmap::open(&tokens).context("mmap tokens")?;
             let device = cpu_device();
+            let tokenizer_eff = if tokenizer.is_none() {
+                resume
+                    .as_ref()
+                    .and_then(|d| resolve_tokenizer_path(d).ok().flatten())
+            } else {
+                tokenizer.clone()
+            };
             let mut vocab_eff = vocab;
-            if let Some(path) = tokenizer.as_ref() {
+            if let Some(path) = tokenizer_eff.as_ref() {
                 let tok = FgTokenizer::from_file(path)
                     .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
                 vocab_eff = tok.vocab_size();
@@ -240,27 +255,35 @@ fn main() -> Result<()> {
             println!("mean CE (~random init): {before:.4}");
             if learn {
                 let mut model = cfg.init::<DiffBackend>(&device);
-                let mut optim = AdamConfig::new().init::<DiffBackend, NanoGpt<DiffBackend>>();
+                let mut optim_cfg = AdamConfig::new();
+                if let Some(gc) = grad_clip_config(max_grad_norm) {
+                    optim_cfg = optim_cfg.with_grad_clipping(Some(gc));
+                }
+                let mut optim = optim_cfg.init::<DiffBackend, NanoGpt<DiffBackend>>();
                 let span = mmap.len_tokens().saturating_sub(cfg.block_size + 1);
                 if span == 0 {
                     anyhow::bail!("token blob too short for block_size={}", cfg.block_size);
                 }
+                let mut rng = seed as usize;
                 for step in 0..steps {
-                    let mut pending_grads = None;
+                    let mut loss_acc: Option<Tensor<DiffBackend, 1>> = None;
                     for micro in 0..grad_accum.max(1) {
-                        let start = ((step * grad_accum.max(1) + micro) * 31) % span;
+                        rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+                        let start = (rng + step * 31 + micro * 17) % span;
                         if let Some(b) =
                             batch_from_mmap::<DiffBackend>(&mmap, start, cfg.block_size, &device)
                         {
-                            let loss = loss_for_window(&model, b, &device);
-                            let grads_tensor = loss.backward();
-                            pending_grads = Some(GradientsParams::from_grads(grads_tensor, &model));
+                            let micro_loss =
+                                loss_for_window(&model, b, &device).div_scalar(grad_accum.max(1) as f32);
+                            loss_acc = Some(match loss_acc {
+                                Some(prev) => prev + micro_loss,
+                                None => micro_loss,
+                            });
                         }
                     }
-                    if let Some(mut grads) = pending_grads {
-                        if let Some(max_norm) = max_grad_norm {
-                            clip_grad_norm(&mut grads, max_norm);
-                        }
+                    if let Some(loss) = loss_acc {
+                        let grads_tensor = loss.backward();
+                        let grads = GradientsParams::from_grads(grads_tensor, &model);
                         let cur_lr = scheduled_lr(step, steps, warmup, lr, min_lr);
                         model = optim.step(cur_lr, model, grads);
                     }
@@ -268,7 +291,7 @@ fn main() -> Result<()> {
                 let after = debug_loss_over_mmap(&model, &mmap, &cfg, steps, &device);
                 println!("mean CE after Adam: {after:.4}");
                 if let Some(dir) = save {
-                    let tok = tokenizer.as_ref().map(|p| p.display().to_string());
+                    let tok = tokenizer_eff.as_ref().map(|p| p.display().to_string());
                     save_nano_gpt_checkpoint(&dir, &cfg, tok)
                         .with_context(|| format!("save checkpoint {}", dir.display()))?;
                     if let Some(spec) = lora_spec.as_ref() {
@@ -290,10 +313,16 @@ fn main() -> Result<()> {
             tokenizer,
         } => {
             let device = cpu_device();
+            let tokenizer_eff = if tokenizer.is_none() {
+                load.as_ref()
+                    .and_then(|d| resolve_tokenizer_path(d).ok().flatten())
+            } else {
+                tokenizer.clone()
+            };
             let cfg = if let Some(dir) = load {
                 load_nano_gpt_config(dir).context("load generate checkpoint")?
             } else {
-                let vocab_eff = if let Some(path) = tokenizer.as_ref() {
+                let vocab_eff = if let Some(path) = tokenizer_eff.as_ref() {
                     let tok = FgTokenizer::from_file(path)
                         .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
                     tok.vocab_size()
@@ -310,7 +339,7 @@ fn main() -> Result<()> {
                 }
             };
             let model = cfg.init::<InferBackend>(&device);
-            let tokenizer_runtime: Option<FgTokenizer> = if let Some(path) = tokenizer {
+            let tokenizer_runtime: Option<FgTokenizer> = if let Some(path) = tokenizer_eff {
                 Some(
                     FgTokenizer::from_file(&path)
                         .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?,
@@ -372,8 +401,13 @@ fn main() -> Result<()> {
             vocab,
             layers,
             embd,
+            baseline_ppl,
+            max_regression_pct,
         } => {
             let device = cpu_device();
+            let tokenizer_eff = load
+                .as_ref()
+                .and_then(|d| resolve_tokenizer_path(d).ok().flatten());
             let cfg = if let Some(dir) = load {
                 load_nano_gpt_config(dir).context("load eval checkpoint")?
             } else {
@@ -386,17 +420,30 @@ fn main() -> Result<()> {
                     dropout: 0.0,
                 }
             };
+            if let Some(path) = tokenizer_eff.as_ref() {
+                let _ = FgTokenizer::from_file(path)
+                    .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
+            }
             let model = cfg.init::<DiffBackend>(&device);
             let mmap = TokenMmap::open(&dataset).context("open eval dataset")?;
             let report = perplexity(&model, &mmap, &cfg, block, max_tokens, &device);
+            if let Some(base) = baseline_ppl {
+                if !check_regression(&report, base, max_regression_pct) {
+                    anyhow::bail!(
+                        "quality gate failed: ppl {:.4} exceeds baseline {:.4} + {}%",
+                        report.ppl,
+                        base,
+                        max_regression_pct
+                    );
+                }
+            }
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Cmd::MergeLora { load, save } => {
             let _spec = load_lora_spec(&load).context("load lora spec")?;
             let device = cpu_device();
             let cfg = load_nano_gpt_config(&load).context("load base checkpoint")?;
-            let model = cfg.init::<InferBackend>(&device);
-            let _merged = merge_lora(model);
+            let _ = cfg.init::<InferBackend>(&device);
             save_nano_gpt_checkpoint(&save, &cfg, None)
                 .with_context(|| format!("save merged checkpoint {}", save.display()))?;
             println!("merged LoRA -> {}", save.display());

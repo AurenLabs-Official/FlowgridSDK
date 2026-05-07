@@ -64,10 +64,21 @@ pub fn expected_keys_for_arch(arch: HfArch) -> Vec<&'static str> {
 }
 
 pub fn validate_expected_keys(tensors: &HashMap<String, Vec<u8>>, arch: HfArch) -> FgResult<()> {
-    for key in expected_keys_for_arch(arch) {
-        if !tensors.contains_key(key) {
-            return Err(FgError::shape(format!("missing HF tensor key: {key}")));
-        }
+    let expected = expected_keys_for_arch(arch);
+    let missing: Vec<&str> = expected
+        .iter()
+        .copied()
+        .filter(|k| !tensors.contains_key(*k))
+        .collect();
+    if !missing.is_empty() {
+        let sample_available = tensors.keys().take(8).cloned().collect::<Vec<_>>().join(", ");
+        return Err(FgError::shape(format!(
+            "missing HF tensor keys [{}] (expected={}, found={}); sample available: {}",
+            missing.join(", "),
+            expected.len(),
+            tensors.len(),
+            sample_available
+        )));
     }
     Ok(())
 }
@@ -113,6 +124,39 @@ pub fn bf16_bytes_to_f32(data: &[u8]) -> FgResult<Vec<f32>> {
     for c in data.chunks_exact(2) {
         let hi = u16::from_le_bytes([c[0], c[1]]) as u32;
         out.push(f32::from_bits(hi << 16));
+    }
+    Ok(out)
+}
+
+pub fn fp16_bytes_to_f32(data: &[u8]) -> FgResult<Vec<f32>> {
+    if data.len() % 2 != 0 {
+        return Err(FgError::shape("fp16 byte length must be even"));
+    }
+    let mut out = Vec::with_capacity(data.len() / 2);
+    for c in data.chunks_exact(2) {
+        let half = u16::from_le_bytes([c[0], c[1]]);
+        let sign = ((half >> 15) & 0x1) as u32;
+        let exp = ((half >> 10) & 0x1f) as u32;
+        let frac = (half & 0x03ff) as u32;
+        let f32_bits = if exp == 0 {
+            if frac == 0 {
+                sign << 31
+            } else {
+                let mut e = -14i32;
+                let mut m = frac;
+                while (m & 0x0400) == 0 {
+                    m <<= 1;
+                    e -= 1;
+                }
+                m &= 0x03ff;
+                (sign << 31) | (((e + 127) as u32) << 23) | (m << 13)
+            }
+        } else if exp == 0x1f {
+            (sign << 31) | 0x7f80_0000 | (frac << 13)
+        } else {
+            (sign << 31) | (((exp as i32 - 15 + 127) as u32) << 23) | (frac << 13)
+        };
+        out.push(f32::from_bits(f32_bits));
     }
     Ok(out)
 }
