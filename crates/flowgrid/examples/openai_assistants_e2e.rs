@@ -21,9 +21,7 @@ use std::time::Duration;
 fn run_status_terminal(status: Option<&str>) -> bool {
     matches!(
         status,
-        Some(
-            "completed" | "failed" | "cancelled" | "expired" | "incomplete" | "requires_action"
-        )
+        Some("completed" | "failed" | "cancelled" | "expired" | "incomplete" | "requires_action")
     )
 }
 

@@ -13,6 +13,9 @@ serde.workspace = true
 serde_json.workspace = true
 safetensors.workspace = true
 thiserror.workspace = true
+rand = "0.8"
+num-traits = "0.2"
 
 [dev-dependencies]
 burn-ndarray = { workspace = true }
+rand = "0.8"

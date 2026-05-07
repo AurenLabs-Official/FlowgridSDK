@@ -32,9 +32,10 @@ pub fn authorize(headers: &HeaderMap, cfg: &AuthConfig) -> Result<(), StatusCode
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
-    let ok = cfg
-        .keys
-        .iter()
-        .any(|k| auth == format!("Bearer {k}"));
-    if ok { Ok(()) } else { Err(StatusCode::UNAUTHORIZED) }
+    let ok = cfg.keys.iter().any(|k| auth == format!("Bearer {k}"));
+    if ok {
+        Ok(())
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
+}

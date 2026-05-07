@@ -1378,9 +1378,12 @@ name = "flowgrid-checkpoint"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "burn",
+ "burn-ndarray",
  "flowgrid-model",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1399,6 +1402,7 @@ dependencies = [
  "flowgrid-tokenizer",
  "flowgrid-train",
  "num-traits",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "tokio",
@@ -1445,6 +1449,8 @@ dependencies = [
  "burn",
  "burn-ndarray",
  "flowgrid-tensor",
+ "num-traits",
+ "rand 0.8.6",
  "safetensors 0.4.5",
  "serde",
  "serde_json",
@@ -1457,11 +1463,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "burn",
+ "burn-ndarray",
+ "bytes",
+ "flowgrid-checkpoint",
+ "flowgrid-model",
  "flowgrid-tokenizer",
+ "futures",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-stream",
  "tower",
  "tower-http 0.5.2",
  "tracing",
@@ -4423,6 +4437,18 @@ checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
  "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

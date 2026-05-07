@@ -8,12 +8,14 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct EvalReport {
     pub n_tokens: usize,
+    pub n_batches: usize,
     pub mean_ce: f32,
     pub ppl: f32,
     pub tokens_per_sec: f32,
     pub peak_mem_mb: f32,
     pub dataset_len_tokens: usize,
     pub block_size: usize,
+    pub stride_tokens: usize,
 }
 
 pub fn perplexity<B: AutodiffBackend>(
@@ -21,6 +23,7 @@ pub fn perplexity<B: AutodiffBackend>(
     mmap: &TokenMmap,
     _cfg: &NanoGptConfig,
     block: usize,
+    stride: usize,
     max_tokens: Option<usize>,
     device: &B::Device,
 ) -> EvalReport {
@@ -30,7 +33,8 @@ pub fn perplexity<B: AutodiffBackend>(
     let mut n_tokens = 0usize;
     let limit = max_tokens.unwrap_or(usize::MAX);
     let mut start = 0usize;
-    while start + block + 1 <= mmap.len_tokens() && n_tokens < limit {
+    let stride = stride.max(1);
+    while start + block < mmap.len_tokens() && n_tokens < limit {
         if let Some(batch) = batch_from_mmap::<B>(mmap, start, block, device) {
             let loss = loss_for_window(model, batch, device);
             let v = loss.into_scalar();
@@ -38,7 +42,7 @@ pub fn perplexity<B: AutodiffBackend>(
             n_batches += 1;
             n_tokens += block;
         }
-        start += block.max(1);
+        start += stride;
     }
     let mean_ce = if n_batches == 0 {
         0.0
@@ -49,12 +53,14 @@ pub fn perplexity<B: AutodiffBackend>(
     let elapsed = start_t.elapsed().as_secs_f32().max(1e-6);
     EvalReport {
         n_tokens,
+        n_batches,
         mean_ce,
         ppl,
         tokens_per_sec: n_tokens as f32 / elapsed,
         peak_mem_mb: 0.0,
         dataset_len_tokens: mmap.len_tokens(),
         block_size: block,
+        stride_tokens: stride,
     }
 }
 

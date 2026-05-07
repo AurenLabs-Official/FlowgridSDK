@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
+use burn::module::Module;
+use burn::record::{BinFileRecorder, FullPrecisionSettings, Recorder};
+use burn::tensor::backend::Backend;
 use flowgrid_model::lora::LoraSpec;
-use flowgrid_model::NanoGptConfig;
+use flowgrid_model::{NanoGpt, NanoGptConfig};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -17,6 +20,18 @@ pub struct Manifest {
     pub tokenizer_path: Option<String>,
     pub lora: Option<String>,
     pub fingerprint: String,
+    #[serde(default = "default_use_rope")]
+    pub use_rope: bool,
+    #[serde(default = "default_rope_theta")]
+    pub rope_theta: f32,
+}
+
+fn default_use_rope() -> bool {
+    true
+}
+
+fn default_rope_theta() -> f32 {
+    10_000.0
 }
 
 impl Manifest {
@@ -36,6 +51,8 @@ impl Manifest {
                 "nanogpt-v{}-b{}-l{}-h{}",
                 cfg.vocab_size, cfg.block_size, cfg.n_layer, cfg.n_embd
             ),
+            use_rope: cfg.use_rope,
+            rope_theta: cfg.rope_theta,
         }
     }
 
@@ -47,6 +64,8 @@ impl Manifest {
             n_head: self.n_head.max(1),
             n_embd: self.hidden,
             dropout: 0.0,
+            use_rope: self.use_rope,
+            rope_theta: self.rope_theta,
         }
     }
 }
@@ -78,10 +97,9 @@ pub fn load_manifest(dir: impl AsRef<Path>) -> Result<Manifest> {
     serde_json::from_slice(&body).context("parse manifest")
 }
 
-/// Save checkpoint metadata and a placeholder model blob.
-///
-/// We intentionally keep the binary format lightweight in this phase.
-pub fn save_nano_gpt_checkpoint(
+/// Save [`Manifest`] plus a Burn binary record of [`NanoGpt` weights] to `model.bin`.
+pub fn save_nano_gpt_checkpoint<B: Backend>(
+    model: &NanoGpt<B>,
     dir: impl AsRef<Path>,
     cfg: &NanoGptConfig,
     tokenizer_path: Option<String>,
@@ -89,9 +107,28 @@ pub fn save_nano_gpt_checkpoint(
     let dir = dir.as_ref();
     save_manifest(dir, &Manifest::from_nano_gpt(cfg, tokenizer_path))?;
     let path = model_path(dir);
-    std::fs::write(&path, b"flowgrid-model-placeholder-v1")
-        .with_context(|| format!("write {}", path.display()))?;
+    let record = model.clone().into_record();
+    BinFileRecorder::<FullPrecisionSettings>::default()
+        .record(record, path.clone())
+        .with_context(|| format!("write burn record {}", path.display()))?;
     Ok(())
+}
+
+/// Load manifest and model weights (CPU/`NdArray` backend `B`).
+pub fn load_nano_gpt_checkpoint<B: Backend>(
+    dir: impl AsRef<Path>,
+    device: &B::Device,
+) -> Result<(NanoGpt<B>, Manifest)> {
+    let dir = dir.as_ref();
+    let manifest = load_manifest(dir)?;
+    let cfg = manifest.to_nano_gpt_config();
+    let path = model_path(dir);
+    let recorder = BinFileRecorder::<FullPrecisionSettings>::default();
+    let record = recorder
+        .load(path.clone(), device)
+        .with_context(|| format!("read burn record {}", path.display()))?;
+    let model = cfg.init(device).load_record(record);
+    Ok((model, manifest))
 }
 
 pub fn load_nano_gpt_config(dir: impl AsRef<Path>) -> Result<NanoGptConfig> {

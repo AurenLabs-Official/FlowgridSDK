@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use crate::hf_loader::{validate_expected_keys, HfArch};
+use flowgrid_tensor::FgResult;
+
+/// Validate that a single-layer Llama-style export contains core projection keys (preview).
+pub fn validate_llama_keys(tensors: &HashMap<String, Vec<u8>>) -> FgResult<()> {
+    validate_expected_keys(tensors, HfArch::Llama)
+}
+
 pub fn expected_keys() -> Vec<&'static str> {
     vec![
         "model.embed_tokens.weight",

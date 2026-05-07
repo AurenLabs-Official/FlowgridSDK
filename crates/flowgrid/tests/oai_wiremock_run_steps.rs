@@ -9,9 +9,7 @@ async fn wiremock_lists_run_steps() {
 
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path(
-            "/v1/threads/thread_w_mock/runs/run_w_mock/steps",
-        ))
+        .and(path("/v1/threads/thread_w_mock/runs/run_w_mock/steps"))
         .and(header("authorization", "Bearer k"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "object": "list",

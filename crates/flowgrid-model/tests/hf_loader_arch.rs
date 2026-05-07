@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use flowgrid_model::hf_loader::{
-    infer_arch_from_config_text, validate_expected_keys, HfArch,
-};
+use flowgrid_model::hf_loader::{infer_arch_from_config_text, validate_expected_keys, HfArch};
 
 #[test]
 fn infer_arch_gpt2() {

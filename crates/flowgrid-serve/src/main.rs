@@ -13,8 +13,9 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
 mod auth;
-mod handlers;
+mod engine;
 mod error;
+mod handlers;
 mod ratelimit;
 mod scheduler;
 mod sse;
@@ -50,16 +51,26 @@ async fn main() {
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(32);
     let rate_state = ratelimit::RateLimitState::new(rps);
-    let scheduler = scheduler::Scheduler::start(scheduler::SchedulerConfig {
-        queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(64),
-        request_timeout_ms: std::env::var("FLOWGRID_SERVE_REQUEST_TIMEOUT_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(10_000),
-    });
+    let llm = match engine::LocalLlm::from_env() {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::warn!("FLOWGRID_SERVE_CHECKPOINT: {e}; falling back to tokenizer/echo mode");
+            None
+        }
+    };
+    let scheduler = scheduler::Scheduler::start(
+        scheduler::SchedulerConfig {
+            queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(64),
+            request_timeout_ms: std::env::var("FLOWGRID_SERVE_REQUEST_TIMEOUT_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(10_000),
+        },
+        llm,
+    );
     let state = Arc::new(AppState {
         scheduler,
         auth: auth_cfg,
@@ -68,7 +79,10 @@ async fn main() {
     let app = Router::new()
         .route("/health", axum::routing::get(health))
         .route("/ready", axum::routing::get(ready))
-        .route("/v1/chat/completions", post(handlers::chat::chat_completions))
+        .route(
+            "/v1/chat/completions",
+            post(handlers::chat::chat_completions),
+        )
         .route("/v1/responses", post(handlers::responses::responses))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(max_body))

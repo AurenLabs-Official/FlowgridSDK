@@ -20,12 +20,20 @@ impl FgTokenizer {
         Ok(Self { inner })
     }
 
-    pub fn encode(&self, text: &str, add_special_tokens: bool) -> Result<Vec<u32>, tokenizers::Error> {
+    pub fn encode(
+        &self,
+        text: &str,
+        add_special_tokens: bool,
+    ) -> Result<Vec<u32>, tokenizers::Error> {
         let enc = self.inner.encode(text, add_special_tokens)?;
         Ok(enc.get_ids().to_vec())
     }
 
-    pub fn decode(&self, ids: &[u32], skip_special_tokens: bool) -> Result<String, tokenizers::Error> {
+    pub fn decode(
+        &self,
+        ids: &[u32],
+        skip_special_tokens: bool,
+    ) -> Result<String, tokenizers::Error> {
         self.inner.decode(ids, skip_special_tokens)
     }
 

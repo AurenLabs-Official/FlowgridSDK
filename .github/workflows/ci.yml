@@ -9,6 +9,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  llm-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt (workspace)
+        run: cargo fmt --all -- --check
+      - name: clippy (workspace, -D warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test (workspace)
+        run: cargo test --workspace
+
   rust:
     runs-on: ubuntu-latest
     steps:

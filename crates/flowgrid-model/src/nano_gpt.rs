@@ -20,6 +20,13 @@ pub struct NanoGptConfig {
     pub n_embd: usize,
     #[config(default = 0.1)]
     pub dropout: f64,
+    /// RoPE in attention (recommended). When `true`, learned position embeddings are not added
+    /// to the residual stream to avoid double positional encoding.
+    #[config(default = true)]
+    pub use_rope: bool,
+    /// Base used in RoPE frequency table when `use_rope` is set.
+    #[config(default = 10_000.0)]
+    pub rope_theta: f32,
 }
 
 #[derive(Module, Debug)]
@@ -32,10 +39,10 @@ pub struct NanoGpt<B: Backend> {
 
 #[derive(Module, Debug)]
 pub struct Block<B: Backend> {
-    attn: CausalSelfAttn<B>,
-    mlp: Mlp<B>,
-    pre_norm: Norm<B>,
-    post_norm: Norm<B>,
+    pub attn: CausalSelfAttn<B>,
+    pub mlp: Mlp<B>,
+    pub pre_norm: Norm<B>,
+    pub post_norm: Norm<B>,
 }
 
 impl NanoGptConfig {
@@ -62,8 +69,8 @@ impl<B: Backend> Block<B> {
             n_head: cfg.n_head.max(1),
             n_kv_head: None,
             head_dim: (cfg.n_embd / cfg.n_head.max(1)).max(1),
-            use_rope: true,
-            rope_theta: 10_000.0,
+            use_rope: cfg.use_rope,
+            rope_theta: cfg.rope_theta,
             max_seq: cfg.block_size,
         };
         Self {
@@ -78,7 +85,7 @@ impl<B: Backend> Block<B> {
         let h = self.pre_norm.forward(x.clone());
         let x = x + self.attn.forward(h, cache);
         let h = self.post_norm.forward(x.clone());
-        self.mlp.forward(h)
+        x + self.mlp.forward(h)
     }
 }
 
@@ -107,11 +114,21 @@ impl<B: Backend> NanoGpt<B> {
             .and_then(|caches| caches.first())
             .and_then(|c| c.view().map(|(k, _)| k.dims()[2]))
             .unwrap_or(0);
-        let pos = Tensor::arange(pos_start as i64..(pos_start + seq) as i64, &device).reshape([1, seq]);
+        let pos =
+            Tensor::arange(pos_start as i64..(pos_start + seq) as i64, &device).reshape([1, seq]);
         let pos = pos.repeat(0, batch);
         let tok = self.tok_emb.forward(tokens);
-        let pos_e = self.pos_emb.forward(pos);
-        let mut x = tok + pos_e;
+        let use_rope = self
+            .blocks
+            .first()
+            .map(|b| b.attn.uses_rope())
+            .unwrap_or(true);
+        let mut x = if use_rope {
+            tok
+        } else {
+            let pos_e = self.pos_emb.forward(pos);
+            tok + pos_e
+        };
         for (idx, blk) in self.blocks.iter().enumerate() {
             if let Some(caches) = cache.as_deref_mut() {
                 while caches.len() <= idx {

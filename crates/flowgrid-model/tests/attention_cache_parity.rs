@@ -15,6 +15,8 @@ fn forward_and_cache_step_have_close_last_token_logits() {
         n_head: 4,
         n_embd: 32,
         dropout: 0.0,
+        use_rope: true,
+        rope_theta: 10_000.0,
     };
     let model = cfg.init::<B>(&device);
     let ids: Vec<i32> = vec![1, 2, 3, 4, 5, 6];
@@ -41,6 +43,6 @@ fn forward_and_cache_step_have_close_last_token_logits() {
         .value;
     assert_eq!(a.len(), b.len());
     for (x, y) in a.iter().zip(b.iter()) {
-        assert!((x - y).abs() < 1e-2, "cache mismatch: {x} vs {y}");
+        assert!((x - y).abs() < 1e-3, "cache mismatch: {x} vs {y}");
     }
 }

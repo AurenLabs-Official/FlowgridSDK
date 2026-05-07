@@ -185,8 +185,11 @@ pub mod sse_fuzz_support {
 
     /// Decode successive SSE events from arbitrarily chunked UTF-8 bytes (for fuzzing).
     pub async fn decode_sse_event_count(parts: Vec<Vec<u8>>) -> Result<usize, io::Error> {
-        let stream =
-            futures::stream::iter(parts.into_iter().map(|v| Ok::<Bytes, io::Error>(Bytes::from(v))));
+        let stream = futures::stream::iter(
+            parts
+                .into_iter()
+                .map(|v| Ok::<Bytes, io::Error>(Bytes::from(v))),
+        );
         let mut dec = crate::internal::sse::common::SseStream::new(stream);
         let mut n = 0usize;
         loop {

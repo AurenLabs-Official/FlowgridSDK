@@ -10,4 +10,9 @@ description = "Checkpoint manifest and model persistence helpers for Flowgrid LL
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+burn = { workspace = true }
 flowgrid-model = { path = "../flowgrid-model" }
+
+[dev-dependencies]
+burn-ndarray = { workspace = true }
+tempfile = "3"

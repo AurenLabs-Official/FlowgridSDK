@@ -2,6 +2,7 @@
 
 use burn::tensor::{backend::Backend, Tensor};
 use flowgrid_tensor::{FgError, FgResult};
+use safetensors::tensor::TensorView;
 use safetensors::SafeTensors;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -71,7 +72,12 @@ pub fn validate_expected_keys(tensors: &HashMap<String, Vec<u8>>, arch: HfArch) 
         .filter(|k| !tensors.contains_key(*k))
         .collect();
     if !missing.is_empty() {
-        let sample_available = tensors.keys().take(8).cloned().collect::<Vec<_>>().join(", ");
+        let sample_available = tensors
+            .keys()
+            .take(8)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(FgError::shape(format!(
             "missing HF tensor keys [{}] (expected={}, found={}); sample available: {}",
             missing.join(", "),
@@ -81,6 +87,44 @@ pub fn validate_expected_keys(tensors: &HashMap<String, Vec<u8>>, arch: HfArch) 
         )));
     }
     Ok(())
+}
+
+fn safetensors_dtype_tag(tv: &TensorView<'_>) -> String {
+    use safetensors::Dtype;
+    match tv.dtype() {
+        Dtype::F32 => "F32".to_string(),
+        Dtype::BF16 => "BF16".to_string(),
+        Dtype::F16 => "F16".to_string(),
+        Dtype::U8 => "U8".to_string(),
+        Dtype::I8 => "I8".to_string(),
+        Dtype::U16 => "U16".to_string(),
+        Dtype::I16 => "I16".to_string(),
+        Dtype::I32 => "I32".to_string(),
+        Dtype::I64 => "I64".to_string(),
+        Dtype::F64 => "F64".to_string(),
+        Dtype::BOOL => "BOOL".to_string(),
+        _ => "OTHER".to_string(),
+    }
+}
+
+/// Dtype tag + shape + raw tensor bytes as stored in `.safetensors`.
+pub type SafetensorsTensorRecord = (String, Vec<usize>, Vec<u8>);
+
+/// Load tensors with dtype + shape metadata (for GPT-2 and other HF loaders).
+pub fn load_safetensors_typed(
+    path: impl AsRef<Path>,
+) -> FgResult<HashMap<String, SafetensorsTensorRecord>> {
+    let bytes = std::fs::read(path.as_ref()).map_err(|e| FgError::io(e.to_string()))?;
+    let st = SafeTensors::deserialize(&bytes).map_err(|e| FgError::io(e.to_string()))?;
+    let mut out = HashMap::new();
+    for name in st.names() {
+        let view = st.tensor(name).map_err(|e| FgError::io(e.to_string()))?;
+        let dtype = safetensors_dtype_tag(&view);
+        let shape = view.shape().to_vec();
+        let data = view.data().to_vec();
+        out.insert(name.to_string(), (dtype, shape, data));
+    }
+    Ok(out)
 }
 
 /// Load named tensors from a `.safetensors` file into host memory (CPU bytes).

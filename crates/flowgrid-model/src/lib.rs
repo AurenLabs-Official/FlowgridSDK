@@ -11,6 +11,10 @@ pub mod mlp;
 pub mod nano_gpt;
 pub mod norm;
 pub mod rope;
+pub mod sampler;
 
+pub use hf::gpt2::load_gpt2_into_nano_gpt;
+pub use hf_loader::{load_safetensors_typed, SafetensorsTensorRecord};
 pub use lm::LmModel;
 pub use nano_gpt::{NanoGpt, NanoGptConfig};
+pub use sampler::{sample_from_last_logits, Sampling};

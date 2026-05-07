@@ -44,10 +44,7 @@ fn openai_rate_limit_reset_delay(headers: &HeaderMap) -> Option<Duration> {
     if rem.trim() != "0" {
         return None;
     }
-    let reset = headers
-        .get("x-ratelimit-reset-requests")?
-        .to_str()
-        .ok()?;
+    let reset = headers.get("x-ratelimit-reset-requests")?.to_str().ok()?;
     let ts = reset.parse::<u64>().ok()?;
     let now = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -10,8 +10,8 @@
 //! ```
 
 use flowgrid::{
-    accumulate_openai_response_visible_text_into, parse_openai_response_stream_json,
-    ClientBuilder, CreateResponseRequest, OpenAiStreamTextLimits,
+    accumulate_openai_response_visible_text_into, parse_openai_response_stream_json, ClientBuilder,
+    CreateResponseRequest, OpenAiStreamTextLimits,
 };
 use futures::StreamExt;
 use serde_json::json;

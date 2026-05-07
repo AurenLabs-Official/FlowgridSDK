@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use crate::hf_loader::{validate_expected_keys, HfArch};
+use flowgrid_tensor::FgResult;
+
+/// Validate keys for a minimal Mistral-shaped export (preview — tensor load into `NanoGpt` is WIP).
+pub fn validate_mistral_keys(tensors: &HashMap<String, Vec<u8>>) -> FgResult<()> {
+    validate_expected_keys(tensors, HfArch::Mistral)
+}
+
 pub fn expected_keys() -> Vec<&'static str> {
     vec![
         "model.embed_tokens.weight",

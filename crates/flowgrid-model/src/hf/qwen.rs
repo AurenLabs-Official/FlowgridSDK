@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use crate::hf_loader::{validate_expected_keys, HfArch};
+use flowgrid_tensor::FgResult;
+
+/// Validate keys for a minimal Qwen2-shaped export (preview — weight load is WIP).
+pub fn validate_qwen_keys(tensors: &HashMap<String, Vec<u8>>) -> FgResult<()> {
+    validate_expected_keys(tensors, HfArch::Qwen2)
+}
+
 pub fn expected_keys() -> Vec<&'static str> {
     vec![
         "model.embed_tokens.weight",

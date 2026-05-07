@@ -217,10 +217,7 @@ pub mod oai {
                 &self.http_client_builder_hook.as_ref().map(|_| "..."),
             );
             #[cfg(feature = "rate-aware-retry")]
-            d.field(
-                "rate_limit_aware_backoff",
-                &self.rate_limit_aware_backoff,
-            );
+            d.field("rate_limit_aware_backoff", &self.rate_limit_aware_backoff);
             #[cfg(feature = "webhooks")]
             d.field(
                 "webhook_secret",
@@ -487,10 +484,7 @@ pub mod clu {
                 &self.http_client_builder_hook.as_ref().map(|_| "..."),
             );
             #[cfg(feature = "rate-aware-retry")]
-            d.field(
-                "rate_limit_aware_backoff",
-                &self.rate_limit_aware_backoff,
-            );
+            d.field("rate_limit_aware_backoff", &self.rate_limit_aware_backoff);
             d.field(
                 "retry_if_response_status",
                 &self.retry_if_response_status.as_ref().map(|_| "..."),

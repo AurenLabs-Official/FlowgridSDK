@@ -47,12 +47,14 @@ impl LoraLinearConfig {
         let in_f = dims[0];
         let out_f = dims[1];
         let lora_a = LinearConfig::new(in_f, self.r)
+            .with_bias(false)
             .with_initializer(Initializer::KaimingUniform {
                 gain: 2.0_f64.sqrt(),
                 fan_out_only: false,
             })
             .init(device);
         let lora_b = LinearConfig::new(self.r, out_f)
+            .with_bias(false)
             .with_initializer(Initializer::Zeros)
             .init(device);
         LoraLinear {
@@ -96,8 +98,9 @@ impl<B: Backend> LoraLinear<B> {
 
 /// Attach LoRA adapters to a model according to target spec.
 ///
-/// In this phase the API is stabilized while adapters remain no-op wrappers
-/// for model-wide attachment (module-level selective injection follows next).
+/// **Preview:** module-wide injection of `LoraLinear` into [`NanoGpt`] blocks is a larger type-system
+/// change (replace `Linear` targets per-layer). Today this returns the model unchanged; merge helpers
+/// ([`LoraLinear::merged_linear`]) and [`merge_lora`] work on explicit adapter modules.
 pub fn attach_lora<M>(model: M, _spec: &LoraSpec) -> M {
     model
 }

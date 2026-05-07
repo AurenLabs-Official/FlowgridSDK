@@ -74,9 +74,7 @@ mod openai {
 
 #[cfg(all(feature = "openai", feature = "assistants"))]
 mod openai_assistants {
-    use flowgrid::{
-        Assistant, ListPage, Thread, ThreadMessage, ThreadRun, ThreadRunStep,
-    };
+    use flowgrid::{Assistant, ListPage, Thread, ThreadMessage, ThreadRun, ThreadRunStep};
 
     #[test]
     fn openai_assistant_v1_deserialize() {

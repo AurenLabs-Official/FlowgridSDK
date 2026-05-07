@@ -9,6 +9,11 @@ use std::path::Path;
 
 use flowgrid_data::TokenMmap;
 
+/// Hyperparameters for the preview Adam training loop (`flowgrid-cli train --learn`).
+///
+/// Defaults (see CLI flags): `grad_accum` controls micro-batch accumulation (deterministic order),
+/// `warmup` linearly ramps LR from 0 → `base_lr`, cosine decay toward `min_lr` by step `total_steps`,
+/// `max_grad_norm` clips global gradient norm when set.
 #[derive(Debug, Clone)]
 pub struct TrainerConfig {
     pub grad_accum: usize,
@@ -41,10 +46,7 @@ pub fn loss_for_window<B: AutodiffBackend>(
 }
 
 /// Map a window of `seq` token ids to `(input, target)` pairs (offset by one).
-pub fn window_to_batch<B: AutodiffBackend>(
-    ids: &[u32],
-    device: &B::Device,
-) -> Option<LmBatch<B>> {
+pub fn window_to_batch<B: AutodiffBackend>(ids: &[u32], device: &B::Device) -> Option<LmBatch<B>> {
     if ids.len() < 2 {
         return None;
     }
@@ -71,9 +73,7 @@ pub fn batch_from_mmap<B: AutodiffBackend>(
     if start + need > mmap.len_tokens() {
         return None;
     }
-    let bytes = mmap
-        .as_bytes()
-        .get(start * 4..(start + need) * 4)?;
+    let bytes = mmap.as_bytes().get(start * 4..(start + need) * 4)?;
     let ids = sequence_bytes_to_ids(bytes).ok()?;
     window_to_batch(&ids, device)
 }

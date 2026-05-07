@@ -5,8 +5,8 @@ use flowgrid_tensor::Module;
 
 #[derive(Module, Debug)]
 pub struct Mlp<B: Backend> {
-    up: Linear<B>,
-    down: Linear<B>,
+    pub up: Linear<B>,
+    pub down: Linear<B>,
     dropout: Dropout,
 }
 
@@ -20,9 +20,8 @@ impl<B: Backend> Mlp<B> {
     }
 
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
-        let h = gelu(self.up.forward(x.clone()));
+        let h = gelu(self.up.forward(x));
         let h = self.dropout.forward(h);
-        let h = self.down.forward(h);
-        x + self.dropout.forward(h)
+        self.down.forward(h)
     }
 }

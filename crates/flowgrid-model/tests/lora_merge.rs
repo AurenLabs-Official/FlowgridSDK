@@ -16,7 +16,8 @@ fn merged_linear_matches_lora_forward() {
         .init::<B>(&device);
     let mut layer = LoraLinearConfig::new(2, 8.0).init(base, &device);
 
-    let a = Tensor::<B, 2>::from_floats([[0.1, -0.2], [0.3, 0.4], [0.2, -0.1], [0.0, 0.5]], &device);
+    let a =
+        Tensor::<B, 2>::from_floats([[0.1, -0.2], [0.3, 0.4], [0.2, -0.1], [0.0, 0.5]], &device);
     let b = Tensor::<B, 2>::from_floats([[0.2, -0.3, 0.1, 0.0], [0.4, 0.2, -0.2, 0.1]], &device);
     layer.lora_a.weight = layer.lora_a.weight.map(|_| a.clone());
     layer.lora_b.weight = layer.lora_b.weight.map(|_| b.clone());

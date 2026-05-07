@@ -12,17 +12,19 @@ use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::tensor::{Int, Tensor};
 use clap::{Parser, Subcommand};
 use flowgrid_checkpoint::{
-    load_lora_spec, load_nano_gpt_config, resolve_tokenizer_path, save_lora_spec,
-    save_nano_gpt_checkpoint,
+    load_lora_spec, load_nano_gpt_checkpoint, load_nano_gpt_config, resolve_tokenizer_path,
+    save_lora_spec, save_nano_gpt_checkpoint,
 };
 use flowgrid_data::{write_token_blob, TokenMmap};
 use flowgrid_eval::{check_regression, perplexity};
-use flowgrid_model::{NanoGpt, NanoGptConfig};
 use flowgrid_model::lora::{attach_lora, LoraSpec, LoraTarget};
+use flowgrid_model::{sample_from_last_logits, NanoGpt, NanoGptConfig, Sampling};
 use flowgrid_tokenizer::{DecoderState, FgTokenizer};
 use flowgrid_train::clip::grad_clip_config;
 use flowgrid_train::loop_train::{batch_from_mmap, debug_loss_over_mmap, loss_for_window};
 use flowgrid_train::schedule::lr as scheduled_lr;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::path::PathBuf;
 
 type DiffBackend = Autodiff<NdArray<f32>>;
@@ -109,6 +111,12 @@ enum Cmd {
         load: Option<PathBuf>,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        #[arg(long)]
+        temperature: Option<f32>,
+        #[arg(long)]
+        top_k: Option<usize>,
+        #[arg(long)]
+        seed: Option<u64>,
     },
     /// Evaluate checkpoint/dataset and print JSON metrics.
     Eval {
@@ -118,6 +126,8 @@ enum Cmd {
         load: Option<PathBuf>,
         #[arg(long, default_value_t = 64)]
         block: usize,
+        #[arg(long, default_value_t = 64)]
+        stride: usize,
         #[arg(long)]
         max_tokens: Option<usize>,
         #[arg(long, default_value_t = 256)]
@@ -168,7 +178,8 @@ fn main() -> Result<()> {
             } else {
                 anyhow::bail!("tokenizer-native mode requires --tokenizer (or use --byte-level)");
             };
-            write_token_blob(&output, &ids).with_context(|| format!("write {}", output.display()))?;
+            write_token_blob(&output, &ids)
+                .with_context(|| format!("write {}", output.display()))?;
             println!("wrote {} token ids -> {}", ids.len(), output.display());
         }
         Cmd::Train {
@@ -208,7 +219,7 @@ fn main() -> Result<()> {
                     .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
                 vocab_eff = tok.vocab_size();
             }
-            let cfg = if let Some(dir) = resume {
+            let cfg = if let Some(ref dir) = resume {
                 load_nano_gpt_config(dir).context("load resume checkpoint")?
             } else {
                 NanoGptConfig {
@@ -218,6 +229,8 @@ fn main() -> Result<()> {
                     n_head: 4,
                     n_embd: embd,
                     dropout: 0.0,
+                    use_rope: true,
+                    rope_theta: 10_000.0,
                 }
             };
             let lora_spec = if lora {
@@ -246,7 +259,15 @@ fn main() -> Result<()> {
             } else {
                 None
             };
-            let model = if let Some(spec) = lora_spec.as_ref() {
+            let mut model = if let Some(dir) = &resume {
+                let (m, _) = load_nano_gpt_checkpoint::<DiffBackend>(dir, &device)
+                    .context("load resume checkpoint")?;
+                if let Some(spec) = lora_spec.as_ref() {
+                    attach_lora(m, spec)
+                } else {
+                    m
+                }
+            } else if let Some(spec) = lora_spec.as_ref() {
                 attach_lora(cfg.init::<DiffBackend>(&device), spec)
             } else {
                 cfg.init::<DiffBackend>(&device)
@@ -254,7 +275,6 @@ fn main() -> Result<()> {
             let before = debug_loss_over_mmap(&model, &mmap, &cfg, steps, &device);
             println!("mean CE (~random init): {before:.4}");
             if learn {
-                let mut model = cfg.init::<DiffBackend>(&device);
                 let mut optim_cfg = AdamConfig::new();
                 if let Some(gc) = grad_clip_config(max_grad_norm) {
                     optim_cfg = optim_cfg.with_grad_clipping(Some(gc));
@@ -273,8 +293,8 @@ fn main() -> Result<()> {
                         if let Some(b) =
                             batch_from_mmap::<DiffBackend>(&mmap, start, cfg.block_size, &device)
                         {
-                            let micro_loss =
-                                loss_for_window(&model, b, &device).div_scalar(grad_accum.max(1) as f32);
+                            let micro_loss = loss_for_window(&model, b, &device)
+                                .div_scalar(grad_accum.max(1) as f32);
                             loss_acc = Some(match loss_acc {
                                 Some(prev) => prev + micro_loss,
                                 None => micro_loss,
@@ -292,7 +312,7 @@ fn main() -> Result<()> {
                 println!("mean CE after Adam: {after:.4}");
                 if let Some(dir) = save {
                     let tok = tokenizer_eff.as_ref().map(|p| p.display().to_string());
-                    save_nano_gpt_checkpoint(&dir, &cfg, tok)
+                    save_nano_gpt_checkpoint(&model, &dir, &cfg, tok)
                         .with_context(|| format!("save checkpoint {}", dir.display()))?;
                     if let Some(spec) = lora_spec.as_ref() {
                         save_lora_spec(&dir, spec)
@@ -311,6 +331,9 @@ fn main() -> Result<()> {
             embd,
             load,
             tokenizer,
+            temperature,
+            top_k,
+            seed,
         } => {
             let device = cpu_device();
             let tokenizer_eff = if tokenizer.is_none() {
@@ -319,8 +342,10 @@ fn main() -> Result<()> {
             } else {
                 tokenizer.clone()
             };
-            let cfg = if let Some(dir) = load {
-                load_nano_gpt_config(dir).context("load generate checkpoint")?
+            let (model, cfg) = if let Some(ref dir) = load {
+                let (m, man) = load_nano_gpt_checkpoint::<InferBackend>(dir, &device)
+                    .context("load generate checkpoint")?;
+                (m, man.to_nano_gpt_config())
             } else {
                 let vocab_eff = if let Some(path) = tokenizer_eff.as_ref() {
                     let tok = FgTokenizer::from_file(path)
@@ -329,16 +354,32 @@ fn main() -> Result<()> {
                 } else {
                     vocab
                 };
-                NanoGptConfig {
+                let c = NanoGptConfig {
                     vocab_size: vocab_eff,
                     block_size: block,
                     n_layer: layers,
                     n_head: 4,
                     n_embd: embd,
                     dropout: 0.0,
-                }
+                    use_rope: true,
+                    rope_theta: 10_000.0,
+                };
+                let m = c.init::<InferBackend>(&device);
+                (m, c)
             };
-            let model = cfg.init::<InferBackend>(&device);
+            let sampling = match (top_k, temperature) {
+                (Some(k), Some(t)) => Sampling::TopK { k, t },
+                (Some(k), None) => Sampling::TopK { k, t: 1.0 },
+                (None, Some(t)) if (t - 1.0).abs() > f32::EPSILON && t > 0.0 => {
+                    Sampling::Temperature { t }
+                }
+                _ => Sampling::Greedy,
+            };
+            let mut rng = if let Some(s) = seed {
+                StdRng::seed_from_u64(s)
+            } else {
+                StdRng::from_entropy()
+            };
             let tokenizer_runtime: Option<FgTokenizer> = if let Some(path) = tokenizer_eff {
                 Some(
                     FgTokenizer::from_file(&path)
@@ -359,20 +400,18 @@ fn main() -> Result<()> {
             if ids.is_empty() {
                 anyhow::bail!("empty prompt");
             }
-            if ids.len() > block {
-                anyhow::bail!("prompt longer than block_size ({block})");
+            if ids.len() > cfg.block_size {
+                anyhow::bail!("prompt longer than block_size ({})", cfg.block_size);
             }
             let mut generated: Vec<u8> = Vec::with_capacity(max_new);
             let mut decode_state = DecoderState::default();
             let mut decoded_out = String::new();
             for _ in 0..max_new {
                 let seq = ids.len();
-                let inp =
-                    Tensor::<InferBackend, 1, Int>::from_ints(ids.as_slice(), &device).reshape([1, seq]);
+                let inp = Tensor::<InferBackend, 1, Int>::from_ints(ids.as_slice(), &device)
+                    .reshape([1, seq]);
                 let logits = model.forward(inp);
-                let row = logits.slice([0..1, (seq - 1)..seq, 0..cfg.vocab_size]);
-                let next = row.argmax(2).reshape([1]).into_scalar();
-                let next_i = num_traits::cast::ToPrimitive::to_i32(&next).unwrap_or(0);
+                let next_i = sample_from_last_logits(&logits, sampling, &mut rng);
                 ids.push(next_i);
                 if let Some(tok) = tokenizer_runtime.as_ref() {
                     let piece = tok
@@ -383,7 +422,7 @@ fn main() -> Result<()> {
                 if let Ok(b) = u8::try_from(next_i as u32) {
                     generated.push(b);
                 }
-                if ids.len() > block {
+                if ids.len() > cfg.block_size {
                     ids.remove(0);
                 }
             }
@@ -397,6 +436,7 @@ fn main() -> Result<()> {
             dataset,
             load,
             block,
+            stride,
             max_tokens,
             vocab,
             layers,
@@ -408,25 +448,30 @@ fn main() -> Result<()> {
             let tokenizer_eff = load
                 .as_ref()
                 .and_then(|d| resolve_tokenizer_path(d).ok().flatten());
-            let cfg = if let Some(dir) = load {
-                load_nano_gpt_config(dir).context("load eval checkpoint")?
+            let (model, cfg) = if let Some(ref dir) = load {
+                let (m, man) = load_nano_gpt_checkpoint::<DiffBackend>(dir, &device)
+                    .context("load eval checkpoint")?;
+                (m, man.to_nano_gpt_config())
             } else {
-                NanoGptConfig {
+                let c = NanoGptConfig {
                     vocab_size: vocab,
                     block_size: block,
                     n_layer: layers,
                     n_head: 4,
                     n_embd: embd,
                     dropout: 0.0,
-                }
+                    use_rope: true,
+                    rope_theta: 10_000.0,
+                };
+                let m = c.init::<DiffBackend>(&device);
+                (m, c)
             };
             if let Some(path) = tokenizer_eff.as_ref() {
                 let _ = FgTokenizer::from_file(path)
                     .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
             }
-            let model = cfg.init::<DiffBackend>(&device);
             let mmap = TokenMmap::open(&dataset).context("open eval dataset")?;
-            let report = perplexity(&model, &mmap, &cfg, block, max_tokens, &device);
+            let report = perplexity(&model, &mmap, &cfg, block, stride, max_tokens, &device);
             if let Some(base) = baseline_ppl {
                 if !check_regression(&report, base, max_regression_pct) {
                     anyhow::bail!(
@@ -442,9 +487,10 @@ fn main() -> Result<()> {
         Cmd::MergeLora { load, save } => {
             let _spec = load_lora_spec(&load).context("load lora spec")?;
             let device = cpu_device();
-            let cfg = load_nano_gpt_config(&load).context("load base checkpoint")?;
-            let _ = cfg.init::<InferBackend>(&device);
-            save_nano_gpt_checkpoint(&save, &cfg, None)
+            let (model, manifest) = load_nano_gpt_checkpoint::<InferBackend>(&load, &device)
+                .context("load base checkpoint")?;
+            let cfg = manifest.to_nano_gpt_config();
+            save_nano_gpt_checkpoint(&model, &save, &cfg, None)
                 .with_context(|| format!("save merged checkpoint {}", save.display()))?;
             println!("merged LoRA -> {}", save.display());
         }

@@ -119,7 +119,25 @@ async fn api_jobs(State(st): State<Arc<UiState>>) -> impl IntoResponse {
 async fn api_start_job(
     State(st): State<Arc<UiState>>,
     Json(req): Json<StartJobReq>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    const ALLOWED_KINDS: &[&str] = &["train", "eval", "generate", "prepare", "merge-lora"];
+    if !ALLOWED_KINDS.contains(&req.kind.as_str()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "kind not allowlisted", "allowed": ALLOWED_KINDS })),
+        )
+            .into_response();
+    }
+    if !req.command.is_empty() {
+        let prog = req.command[0].as_str();
+        if prog != "cargo" && !prog.ends_with("flowgrid-llm") && prog != "flowgrid-llm" {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "command must start with cargo or flowgrid-llm" })),
+            )
+                .into_response();
+        }
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let log_path = format!("flowgrid_job_{id}.log");
     let mut cmd = if req.command.is_empty() {
@@ -149,15 +167,15 @@ async fn api_start_job(
         );
     }
     if let Some(pid) = pid {
-        st.children.lock().expect("children").insert(id.clone(), pid);
+        st.children
+            .lock()
+            .expect("children")
+            .insert(id.clone(), pid);
     }
-    (StatusCode::OK, Json(json!({ "id": id, "pid": pid })))
+    (StatusCode::OK, Json(json!({ "id": id, "pid": pid }))).into_response()
 }
 
-async fn api_stop_job(
-    State(st): State<Arc<UiState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn api_stop_job(State(st): State<Arc<UiState>>, Path(id): Path<String>) -> impl IntoResponse {
     let pid = st.children.lock().expect("children").remove(&id);
     if let Some(pid) = pid {
         let _ = Command::new("taskkill")

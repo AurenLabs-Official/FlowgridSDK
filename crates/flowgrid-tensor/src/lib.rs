@@ -8,12 +8,12 @@ pub mod obs;
 pub use burn::config::Config;
 pub use burn::module::Module;
 pub use burn::record::FullPrecisionSettings;
+pub use burn::tensor::ElementConversion;
 pub use burn::tensor::{
     activation::relu,
     backend::{AutodiffBackend, Backend},
     Tensor,
 };
-pub use burn::tensor::ElementConversion;
 
 use std::fmt;
 
