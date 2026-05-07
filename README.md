@@ -10,6 +10,19 @@ Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.to
 
 Anthropic’s surface follows the Python SDK’s [`api.md`](https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/api.md) (Messages, Batches, Models, beta namespaces), without using Python at runtime.
 
+## LLM stack (experimental, Burn)
+
+Optional workspace crates under [`crates/`](crates/) add a **Rust-native** language-model pipeline (tokenizer → mmap data → nano LM → CLI). Overview and commands: [`docs/llm/overview.md`](docs/llm/overview.md).
+
+```bash
+cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
+cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16
+cargo run -p flowgrid-serve   # OpenAI-shaped stub on :9000
+cargo run -p flowgrid-ui      # SQLite REST shell on :9010
+```
+
+The HTTP SDK crate [`flowgrid`](crates/flowgrid/) is unchanged; point `OPENAI_BASE_URL` at `flowgrid-serve` for adapter testing.
+
 ## Cookbook
 
 Examples assume **default features** (`openai` + `anthropic` + `tls-rustls`). With both enabled, use prefixed error types such as [`OpenAiError`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiError.html) / [`AnthropicError`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicError.html).

@@ -1,3 +1,43 @@
 [workspace]
 resolver = "2"
-members = ["crates/flowgrid"]
+members = [
+    "crates/flowgrid",
+    "crates/flowgrid-tensor",
+    "crates/flowgrid-tokenizer",
+    "crates/flowgrid-data",
+    "crates/flowgrid-model",
+    "crates/flowgrid-train",
+    "crates/flowgrid-cli",
+    "crates/flowgrid-serve",
+    "crates/flowgrid-edit",
+    "crates/flowgrid-ui",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+burn = { version = "0.13.2", default-features = false, features = ["std", "train", "ndarray"] }
+burn-ndarray = { version = "0.13.2", default-features = false }
+# burn-core 0.13 expects bincode 2.0 pre-release APIs; lock so `cargo update` does not jump to 2.0.1.
+bincode = { version = "=2.0.0-rc.3", default-features = false, features = ["serde", "alloc"] }
+thiserror = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.5", features = ["fs", "trace"] }
+futures = "0.3"
+memmap2 = "0.9"
+tokenizers = "0.20"
+safetensors = "0.4"
+memchr = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.30", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }

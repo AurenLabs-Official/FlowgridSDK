@@ -1,0 +1,11 @@
+[package]
+name = "flowgrid-tokenizer"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hugging Face tokenizers wrapper for Flowgrid LLM."
+
+[dependencies]
+tokenizers.workspace = true
+thiserror.workspace = true

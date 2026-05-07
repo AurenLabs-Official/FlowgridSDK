@@ -1,0 +1,21 @@
+[package]
+name = "flowgrid-tensor"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Burn-backed tensor prelude for Flowgrid LLM crates (CPU/GPU backend flags)."
+
+[features]
+default = []
+# Extra GPU backends (NdArray CPU is always enabled via workspace burn dep).
+wgpu = ["burn/wgpu"]
+cuda = ["burn/cuda"]
+tch = ["burn/tch"]
+metal = ["burn/metal"]
+candle = ["burn/candle"]
+
+[dependencies]
+burn = { workspace = true }
+bincode.workspace = true
+thiserror.workspace = true
