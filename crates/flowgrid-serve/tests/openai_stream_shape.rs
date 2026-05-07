@@ -12,7 +12,10 @@ fn test_state() -> Arc<AppState> {
     let scheduler = Scheduler::start(
         SchedulerConfig {
             queue_depth: 4,
+            worker_threads: 1,
             request_timeout_ms: 5_000,
+            stream_buffer: 64,
+            max_new_tokens: None,
         },
         None,
     );

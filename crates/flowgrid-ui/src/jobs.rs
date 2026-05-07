@@ -88,6 +88,8 @@ pub fn resolve_job_argv(
             "2".into(),
             "--embd".into(),
             "64".into(),
+            "--run-report-out".into(),
+            "target/mlops/train_tiny_report.json".into(),
         ]),
         ("eval-smoke", "eval") => {
             if env.eval_dataset.is_empty() {
@@ -113,6 +115,8 @@ pub fn resolve_job_argv(
                 argv.push("--load".into());
                 argv.push(env.eval_load.into());
             }
+            argv.push("--run-report-out".into());
+            argv.push("target/mlops/eval_smoke_report.json".into());
             Ok(argv)
         }
         ("generate-demo", "generate") => {

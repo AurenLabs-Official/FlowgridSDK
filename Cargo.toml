@@ -9,6 +9,7 @@ members = [
     "crates/flowgrid-model",
     "crates/flowgrid-train",
     "crates/flowgrid-eval",
+    "crates/flowgrid-ml",
     "crates/flowgrid-checkpoint",
     "crates/flowgrid-cli",
     "crates/flowgrid-serve",

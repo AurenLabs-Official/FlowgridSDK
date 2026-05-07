@@ -42,6 +42,11 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - `flowgrid-tokenizer`: **`DecoderState::reset`**; incremental **`decode_streaming`** uses one full **`decode`/step** plus prefix/LCP delta.
 - `flowgrid-model`: **GQA** attention + **`decode_self_attn_kv_proj`** (Llama); RoPE **`apply_rope_qk`** honors mismatched **Q/K** head axes.
 - KV cache **`slice_assign`** ring buffer regression test in-crate.
+- `flowgrid-serve`: worker/backpressure controls via **`FLOWGRID_SERVE_WORKERS`**, **`FLOWGRID_SERVE_STREAM_BUFFER`**, and **`FLOWGRID_SERVE_MAX_NEW_TOKENS`**.
+- `flowgrid-cli`: deployment profile switch **`--profile local|cloud|hybrid`** and run artifact output **`--run-report-out`** for train/eval.
+- `flowgrid-data`: dataset split helpers (**`DatasetSplit`**, **`SplitSpec`**, split bounds API).
+- `flowgrid-eval`: range-aware scoring with **`perplexity_in_range`** and split metadata in **`EvalReport`**.
+- New crate **`flowgrid-ml`** with classical ML baselines (linear regression fit + regression/classification metrics).
 - **LLM stack (preview):** Burn-backed crates `flowgrid-tensor`, `flowgrid-tokenizer`, `flowgrid-data`, `flowgrid-model`, `flowgrid-train`, `flowgrid-cli` (`flowgrid-llm`), `flowgrid-serve`, `flowgrid-edit`, `flowgrid-ui`; overview [`docs/llm/overview.md`](docs/llm/overview.md). Workspace pins **`bincode =2.0.0-rc.3`** for `burn` 0.13 compatibility.
 - Examples: **`openai_assistants_e2e`** (Assistants thread → message → run → bounded poll) and **`openai_responses_stream_accumulate`** (Responses SSE + bounded text accumulation); README **`full` vs `enterprise`** subsection and **`docs/observability.md`** dashboard hints.
 - OpenAI **cursor list helpers**: **`ListPagesLimits`**, **`ListPage::after_cursor`**, **`AssistantsClient::list_all_typed`**, **`ThreadsClient::list_all_typed`**; **`ListPage`** forward-compatible **`extra`** map; Assistants **run steps** (**`ThreadRunStep`**, **`list_steps_typed`**) with fixtures + wiremock.
@@ -62,6 +67,8 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 ### Changed
 
 - **`CreateEmbeddingResponse.usage`**, **`Completion.usage`**, and **`ResponseObject.usage`** are now structured types (with **`extra`** maps) instead of raw **`serde_json::Value`**.
+- `flowgrid-cli train`: expanded loop controls via **`--epochs`** and **`--batch-size`** to improve train-from-scratch/fine-tune reproducibility.
+- CI: added **`ml-core-smoke`** job; local mirror command **`just check-ml-core`**.
 
 ### Fixed
 

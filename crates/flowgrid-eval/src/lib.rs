@@ -15,8 +15,47 @@ pub struct EvalReport {
     pub tokens_per_sec: f32,
     pub peak_mem_mb: f32,
     pub dataset_len_tokens: usize,
+    pub range_start_token: usize,
+    pub range_end_token: usize,
     pub block_size: usize,
     pub stride_tokens: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EvalWindow {
+    pub block: usize,
+    pub stride: usize,
+    pub max_tokens: Option<usize>,
+    pub range_start_token: usize,
+    pub range_end_token: usize,
+}
+
+impl EvalWindow {
+    pub fn full(block: usize, stride: usize, max_tokens: Option<usize>, len_tokens: usize) -> Self {
+        Self {
+            block,
+            stride,
+            max_tokens,
+            range_start_token: 0,
+            range_end_token: len_tokens,
+        }
+    }
+
+    pub fn with_range(
+        block: usize,
+        stride: usize,
+        max_tokens: Option<usize>,
+        range_start_token: usize,
+        range_end_token: usize,
+    ) -> Self {
+        Self {
+            block,
+            stride,
+            max_tokens,
+            range_start_token,
+            range_end_token,
+        }
+    }
 }
 
 pub fn perplexity<B: AutodiffBackend>(
@@ -28,14 +67,28 @@ pub fn perplexity<B: AutodiffBackend>(
     max_tokens: Option<usize>,
     device: &B::Device,
 ) -> EvalReport {
+    let window = EvalWindow::full(block, stride, max_tokens, mmap.len_tokens());
+    perplexity_in_range(model, mmap, _cfg, window, device)
+}
+
+pub fn perplexity_in_range<B: AutodiffBackend>(
+    model: &NanoGpt<B>,
+    mmap: &TokenMmap,
+    _cfg: &NanoGptConfig,
+    window: EvalWindow,
+    device: &B::Device,
+) -> EvalReport {
     let start_t = std::time::Instant::now();
     let mut acc = 0.0f32;
     let mut n_batches = 0usize;
     let mut n_tokens = 0usize;
-    let limit = max_tokens.unwrap_or(usize::MAX);
-    let mut start = 0usize;
-    let stride = stride.max(1);
-    while start + block < mmap.len_tokens() && n_tokens < limit {
+    let block = window.block;
+    let limit = window.max_tokens.unwrap_or(usize::MAX);
+    let start_bound = window.range_start_token.min(mmap.len_tokens());
+    let mut start = start_bound;
+    let range_end = window.range_end_token.min(mmap.len_tokens());
+    let stride = window.stride.max(1);
+    while start + block < range_end && n_tokens < limit {
         if let Some(batch) = batch_from_mmap::<B>(mmap, start, block, device) {
             let loss = loss_for_window(model, batch, device);
             let v = loss.into_scalar();
@@ -61,6 +114,8 @@ pub fn perplexity<B: AutodiffBackend>(
         tokens_per_sec: n_tokens as f32 / elapsed,
         peak_mem_mb: 0.0,
         dataset_len_tokens: mmap.len_tokens(),
+        range_start_token: start_bound.min(range_end),
+        range_end_token: range_end,
         block_size: block,
         stride_tokens: stride,
     }

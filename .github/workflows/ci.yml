@@ -24,6 +24,19 @@ jobs:
       - name: test (workspace)
         run: cargo test --workspace
 
+  ml-core-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: check (ML core crates)
+        run: cargo check -p flowgrid-data -p flowgrid-eval -p flowgrid-ml -p flowgrid-cli -p flowgrid-serve
+      - name: test (ML core crates)
+        run: cargo test -p flowgrid-data -p flowgrid-eval -p flowgrid-ml
+
   rust:
     runs-on: ubuntu-latest
     steps:

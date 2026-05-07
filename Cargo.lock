@@ -1477,6 +1477,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowgrid-ml"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "flowgrid-model"
 version = "0.1.0"
 dependencies = [

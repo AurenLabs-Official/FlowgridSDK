@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use flowgrid_tokenizer::FgTokenizer;
 use std::sync::mpsc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -10,7 +11,9 @@ use crate::engine::{serve_sampling_from_env, serve_seed_from_env, LocalLlm};
 
 #[derive(Clone)]
 pub struct Scheduler {
-    req_tx: Arc<mpsc::SyncSender<SchedulerReq>>,
+    worker_txs: Arc<Vec<mpsc::SyncSender<SchedulerReq>>>,
+    next_worker: Arc<AtomicUsize>,
+    stream_buffer: usize,
 }
 
 enum SchedulerReq {
@@ -29,22 +32,47 @@ enum SchedulerReq {
 #[derive(Debug)]
 pub struct SchedulerConfig {
     pub queue_depth: usize,
+    pub worker_threads: usize,
     pub request_timeout_ms: u64,
+    pub stream_buffer: usize,
+    pub max_new_tokens: Option<usize>,
 }
 
 impl Scheduler {
-    pub fn start(cfg: SchedulerConfig, llm: Option<LocalLlm>) -> Self {
-        let tokenizer = std::env::var("FLOWGRID_SERVE_TOKENIZER")
-            .ok()
-            .and_then(|p| FgTokenizer::from_file(&p).ok());
+    pub fn start(cfg: SchedulerConfig, mut llm: Option<LocalLlm>) -> Self {
+        let tokenizer_path = std::env::var("FLOWGRID_SERVE_TOKENIZER").ok();
         let timeout_ms = cfg.request_timeout_ms.max(1);
-        let (req_tx, req_rx) = mpsc::sync_channel::<SchedulerReq>(cfg.queue_depth.max(1));
-        let req_tx = Arc::new(req_tx);
-        let dispatch = Arc::clone(&req_tx);
-        thread::spawn(move || {
-            Self::inference_loop(req_rx, llm, tokenizer, timeout_ms);
-        });
-        Self { req_tx: dispatch }
+        let worker_threads_cfg = cfg.worker_threads.max(1);
+        let worker_threads = if llm.is_some() {
+            if worker_threads_cfg > 1 {
+                tracing::warn!(
+                    requested = worker_threads_cfg,
+                    "FLOWGRID_SERVE_WORKERS>1 is currently unsupported with local checkpoint inference; using 1 worker"
+                );
+            }
+            1
+        } else {
+            worker_threads_cfg
+        };
+        let queue_depth = cfg.queue_depth.max(1);
+        let max_new_tokens = cfg.max_new_tokens.filter(|v| *v > 0);
+        let mut worker_txs = Vec::with_capacity(worker_threads);
+        for worker_idx in 0..worker_threads {
+            let (req_tx, req_rx) = mpsc::sync_channel::<SchedulerReq>(queue_depth);
+            worker_txs.push(req_tx);
+            let llm_worker = if worker_idx == 0 { llm.take() } else { None };
+            let tok_worker = tokenizer_path
+                .as_ref()
+                .and_then(|p| FgTokenizer::from_file(p).ok());
+            thread::spawn(move || {
+                Self::inference_loop(req_rx, llm_worker, tok_worker, timeout_ms, max_new_tokens);
+            });
+        }
+        Self {
+            worker_txs: Arc::new(worker_txs),
+            next_worker: Arc::new(AtomicUsize::new(0)),
+            stream_buffer: cfg.stream_buffer.max(1),
+        }
     }
 
     fn inference_loop(
@@ -52,6 +80,7 @@ impl Scheduler {
         llm: Option<LocalLlm>,
         tokenizer: Option<FgTokenizer>,
         timeout_ms: u64,
+        max_new_tokens: Option<usize>,
     ) {
         let timeout = Duration::from_millis(timeout_ms.max(1));
         while let Ok(req) = req_rx.recv() {
@@ -63,6 +92,10 @@ impl Scheduler {
                     max_new,
                     respond,
                 } => {
+                    let max_new = match max_new_tokens {
+                        Some(cap) => max_new.min(cap),
+                        None => max_new,
+                    };
                     let r = Self::run_plain(&llm, tokenizer.as_ref(), &prompt, max_new, deadline);
                     let _ = respond.send(r);
                 }
@@ -71,6 +104,10 @@ impl Scheduler {
                     max_new,
                     chunk_tx,
                 } => {
+                    let max_new = match max_new_tokens {
+                        Some(cap) => max_new.min(cap),
+                        None => max_new,
+                    };
                     if let Some(ref engine) = llm {
                         let sampling = serve_sampling_from_env();
                         let seed = serve_seed_from_env();
@@ -179,7 +216,8 @@ impl Scheduler {
 
     pub async fn submit_plain(&self, prompt: String, max_new: usize) -> Result<PlainOutput> {
         let (tx, rx) = std::sync::mpsc::channel();
-        self.req_tx
+        let idx = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.worker_txs.len();
+        self.worker_txs[idx]
             .send(SchedulerReq::Plain {
                 prompt,
                 max_new,
@@ -200,8 +238,9 @@ impl Scheduler {
         prompt: String,
         max_new: usize,
     ) -> Result<tokio::sync::mpsc::Receiver<Result<StreamPart, anyhow::Error>>> {
-        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(64);
-        self.req_tx
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(self.stream_buffer.max(1));
+        let idx = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.worker_txs.len();
+        self.worker_txs[idx]
             .send(SchedulerReq::Stream {
                 prompt,
                 max_new,

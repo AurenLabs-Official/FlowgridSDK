@@ -5,13 +5,13 @@ mod backend;
 use anyhow::{Context, Result};
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::tensor::{Int, Tensor};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use flowgrid_checkpoint::{
     load_lora_spec, load_nano_gpt_checkpoint, load_nano_gpt_config, resolve_tokenizer_path,
     save_lora_spec, save_nano_gpt_checkpoint,
 };
-use flowgrid_data::{write_token_blob, TokenMmap};
-use flowgrid_eval::{check_regression, perplexity};
+use flowgrid_data::{write_token_blob, DatasetSplit, SplitSpec, TokenMmap};
+use flowgrid_eval::{check_regression, perplexity, perplexity_in_range, EvalWindow};
 use flowgrid_model::lora::{attach_lora, LoraSpec, LoraTarget};
 use flowgrid_model::{sample_from_last_logits, NanoGpt, NanoGptConfig, Sampling};
 use flowgrid_tokenizer::{DecoderState, FgTokenizer};
@@ -21,14 +21,25 @@ use flowgrid_train::schedule::lr as scheduled_lr;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use backend::{DiffBackend, InferBackend};
 
 #[derive(Parser, Debug)]
 #[command(name = "flowgrid-llm")]
 struct Cli {
+    /// Deployment operating profile (`local`, `cloud`, `hybrid`).
+    #[arg(long, value_enum, default_value_t = DeploymentProfile::Local)]
+    profile: DeploymentProfile,
     #[command(subcommand)]
     cmd: Cmd,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum DeploymentProfile {
+    Local,
+    Cloud,
+    Hybrid,
 }
 
 #[derive(Subcommand, Debug)]
@@ -63,6 +74,10 @@ enum Cmd {
         n_kv_head: usize,
         #[arg(long, default_value_t = 16)]
         steps: usize,
+        #[arg(long, default_value_t = 1)]
+        epochs: usize,
+        #[arg(long, default_value_t = 1)]
+        batch_size: usize,
         #[arg(long)]
         learn: bool,
         #[arg(long, default_value_t = 1e-3_f64)]
@@ -93,6 +108,9 @@ enum Cmd {
         lora_r: usize,
         #[arg(long, default_value_t = 32.0)]
         lora_alpha: f64,
+        /// Persist machine-readable run metadata/artifact JSON.
+        #[arg(long)]
+        run_report_out: Option<PathBuf>,
     },
     /// Greedy continuation using random-init weights (demo wiring — load checkpoints via Burn records later).
     Generate {
@@ -152,6 +170,18 @@ enum Cmd {
         baseline_ppl: Option<f32>,
         #[arg(long, default_value_t = 5.0)]
         max_regression_pct: f32,
+        /// Evaluate only this split (`train`, `val`, `test`) over the token mmap.
+        #[arg(long, default_value = "test")]
+        split: String,
+        /// Train fraction for split calculation (remainder after train+val is test).
+        #[arg(long, default_value_t = 0.8)]
+        train_frac: f32,
+        /// Validation fraction for split calculation.
+        #[arg(long, default_value_t = 0.1)]
+        val_frac: f32,
+        /// Persist machine-readable eval metadata/artifact JSON.
+        #[arg(long)]
+        run_report_out: Option<PathBuf>,
     },
     MergeLora {
         #[arg(long)]
@@ -159,6 +189,39 @@ enum Cmd {
         #[arg(long)]
         save: PathBuf,
     },
+}
+
+#[derive(Debug, serde::Serialize)]
+struct TrainRunReport {
+    profile: String,
+    steps: usize,
+    epochs: usize,
+    batch_size: usize,
+    grad_accum: usize,
+    block_size: usize,
+    before_ce: f32,
+    after_ce: f32,
+    elapsed_ms: u128,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EvalRunReport {
+    profile: String,
+    split: String,
+    train_frac: f32,
+    val_frac: f32,
+    report: flowgrid_eval::EvalReport,
+    elapsed_ms: u128,
+}
+
+fn write_json_report(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create {}", parent.display()))?;
+    }
+    let body = serde_json::to_vec_pretty(value)?;
+    std::fs::write(path, body).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -174,6 +237,18 @@ fn main() -> Result<()> {
     }
 
     let cli = Cli::parse();
+    let profile = cli.profile;
+    tracing::info!(?profile, "flowgrid-llm profile selected");
+    if std::env::var("FLOWGRID_DEVICE").is_err() {
+        match profile {
+            DeploymentProfile::Local => {
+                std::env::set_var("FLOWGRID_DEVICE", "cpu");
+            }
+            DeploymentProfile::Cloud | DeploymentProfile::Hybrid => {
+                std::env::set_var("FLOWGRID_DEVICE", "wgpu");
+            }
+        }
+    }
     match cli.cmd {
         Cmd::Prepare {
             input,
@@ -206,6 +281,8 @@ fn main() -> Result<()> {
             n_head,
             n_kv_head,
             steps,
+            epochs,
+            batch_size,
             learn,
             lr,
             grad_accum,
@@ -220,7 +297,9 @@ fn main() -> Result<()> {
             lora_targets,
             lora_r,
             lora_alpha,
+            run_report_out,
         } => {
+            let started = Instant::now();
             let mmap = TokenMmap::open(&tokens).context("mmap tokens")?;
             let device = backend::infer_device();
             let tokenizer_eff = if tokenizer.is_none() {
@@ -292,6 +371,7 @@ fn main() -> Result<()> {
             };
             let before = debug_loss_over_mmap(&model, &mmap, &cfg, steps, &device);
             println!("mean CE (~random init): {before:.4}");
+            let mut after = before;
             if learn {
                 let mut optim_cfg = AdamConfig::new();
                 if let Some(gc) = grad_clip_config(max_grad_norm) {
@@ -303,16 +383,29 @@ fn main() -> Result<()> {
                     anyhow::bail!("token blob too short for block_size={}", cfg.block_size);
                 }
                 let mut rng = seed as usize;
-                for step in 0..steps {
+                let total_steps = steps.saturating_mul(epochs.max(1));
+                for step in 0..total_steps {
                     let mut loss_acc: Option<Tensor<DiffBackend, 1>> = None;
                     for micro in 0..grad_accum.max(1) {
-                        rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
-                        let start = (rng + step * 31 + micro * 17) % span;
-                        if let Some(b) =
-                            batch_from_mmap::<DiffBackend>(&mmap, start, cfg.block_size, &device)
-                        {
-                            let micro_loss = loss_for_window(&model, b, &device)
-                                .div_scalar(grad_accum.max(1) as f32);
+                        let mut batch_loss_sum: Option<Tensor<DiffBackend, 1>> = None;
+                        let mut seen = 0usize;
+                        for _ in 0..batch_size.max(1) {
+                            rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+                            let start = (rng + step * 31 + micro * 17) % span;
+                            if let Some(b) =
+                                batch_from_mmap::<DiffBackend>(&mmap, start, cfg.block_size, &device)
+                            {
+                                let sample_loss = loss_for_window(&model, b, &device);
+                                batch_loss_sum = Some(match batch_loss_sum {
+                                    Some(prev) => prev + sample_loss,
+                                    None => sample_loss,
+                                });
+                                seen += 1;
+                            }
+                        }
+                        if let Some(sum_loss) = batch_loss_sum {
+                            let denom = (seen.max(1) * grad_accum.max(1)) as f32;
+                            let micro_loss = sum_loss.div_scalar(denom);
                             loss_acc = Some(match loss_acc {
                                 Some(prev) => prev + micro_loss,
                                 None => micro_loss,
@@ -322,11 +415,11 @@ fn main() -> Result<()> {
                     if let Some(loss) = loss_acc {
                         let grads_tensor = loss.backward();
                         let grads = GradientsParams::from_grads(grads_tensor, &model);
-                        let cur_lr = scheduled_lr(step, steps, warmup, lr, min_lr);
+                        let cur_lr = scheduled_lr(step, total_steps.max(1), warmup, lr, min_lr);
                         model = optim.step(cur_lr, model, grads);
                     }
                 }
-                let after = debug_loss_over_mmap(&model, &mmap, &cfg, steps, &device);
+                after = debug_loss_over_mmap(&model, &mmap, &cfg, steps, &device);
                 println!("mean CE after Adam: {after:.4}");
                 if let Some(dir) = save {
                     let tok = tokenizer_eff.as_ref().map(|p| p.display().to_string());
@@ -344,6 +437,20 @@ fn main() -> Result<()> {
                     }
                     println!("saved checkpoint -> {}", dir.display());
                 }
+            }
+            if let Some(path) = run_report_out.as_ref() {
+                let run = TrainRunReport {
+                    profile: format!("{profile:?}").to_ascii_lowercase(),
+                    steps,
+                    epochs,
+                    batch_size,
+                    grad_accum,
+                    block_size: cfg.block_size,
+                    before_ce: before,
+                    after_ce: after,
+                    elapsed_ms: started.elapsed().as_millis(),
+                };
+                write_json_report(path, &run)?;
             }
         }
         Cmd::Generate {
@@ -474,7 +581,12 @@ fn main() -> Result<()> {
             n_kv_head,
             baseline_ppl,
             max_regression_pct,
+            split,
+            train_frac,
+            val_frac,
+            run_report_out,
         } => {
+            let started = Instant::now();
             let device = backend::infer_device();
             let tokenizer_eff = load
                 .as_ref()
@@ -503,7 +615,26 @@ fn main() -> Result<()> {
                     .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
             }
             let mmap = TokenMmap::open(&dataset).context("open eval dataset")?;
-            let report = perplexity(&model, &mmap, &cfg, block, stride, max_tokens, &device);
+            let split_spec = SplitSpec::normalized(train_frac, val_frac);
+            let split_norm = split.trim().to_ascii_lowercase();
+            let split_kind = match split_norm.as_str() {
+                "train" => DatasetSplit::Train,
+                "val" | "valid" | "validation" => DatasetSplit::Val,
+                "test" => DatasetSplit::Test,
+                other => anyhow::bail!("unknown --split '{other}' (expected train|val|test)"),
+            };
+            let (start_tok, end_tok) = mmap.split_bounds(split_spec, split_kind);
+            let report = if start_tok == 0 && end_tok == mmap.len_tokens() {
+                perplexity(&model, &mmap, &cfg, block, stride, max_tokens, &device)
+            } else {
+                perplexity_in_range(
+                    &model,
+                    &mmap,
+                    &cfg,
+                    EvalWindow::with_range(block, stride, max_tokens, start_tok, end_tok),
+                    &device,
+                )
+            };
             if let Some(base) = baseline_ppl {
                 if !check_regression(&report, base, max_regression_pct) {
                     anyhow::bail!(
@@ -513,6 +644,17 @@ fn main() -> Result<()> {
                         max_regression_pct
                     );
                 }
+            }
+            if let Some(path) = run_report_out.as_ref() {
+                let run = EvalRunReport {
+                    profile: format!("{profile:?}").to_ascii_lowercase(),
+                    split: split_norm,
+                    train_frac,
+                    val_frac,
+                    report: report.clone(),
+                    elapsed_ms: started.elapsed().as_millis(),
+                };
+                write_json_report(path, &run)?;
             }
             println!("{}", serde_json::to_string_pretty(&report)?);
         }

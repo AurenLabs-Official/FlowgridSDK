@@ -16,6 +16,16 @@ This guide sketches a move from **official first-party SDKs** or **hand-written 
 2. **Timeouts:** combine **client-level** defaults with per-call [`ExecuteOptions::timeout`](https://docs.rs/flowgrid/latest/flowgrid/struct.ExecuteOptions.html) for long calls.
 3. **TLS:** enable exactly one of **`tls-rustls`** or **`tls-native`**; mixed stacks fail at compile time.
 
+## Local LLM workflow migration (preview stack)
+
+When moving shell scripts to `flowgrid-llm` / `flowgrid-serve`, prefer explicit runtime profiles and report artifacts:
+
+- Use `flowgrid-llm --profile local|cloud|hybrid ...` to keep deployment intent visible.
+- For reproducible tracking, persist JSON outputs with:
+  - `flowgrid-llm train --run-report-out <path>`
+  - `flowgrid-llm eval --run-report-out <path>`
+- For split-aware eval gates, use `--split train|val|test` with `--train-frac` / `--val-frac`.
+
 ## Observability
 
 Enable **`tracing`** / **`opentelemetry`** (see **`enterprise`**) and follow [`docs/observability.md`](observability.md) for span names and metric labels.

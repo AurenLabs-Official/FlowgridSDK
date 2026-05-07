@@ -10,7 +10,7 @@ Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.to
 
 ## Preview limits (LLM stack)
 
-The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoint manifests may gain new fields. For **`flowgrid-serve`**, `usage` / `finish_reason` are **tokenizer-exact** when `FLOWGRID_SERVE_CHECKPOINT` (and manifest tokenizer) is used; pure echo without a tokenizer still uses the **byte heuristic** (~bytes/4). Details: [`docs/llm/overview.md`](docs/llm/overview.md). Optional **GPU** (Burn `Wgpu`): build `flowgrid-cli` / `flowgrid-serve` with **`--features gpu-wgpu`** and set **`FLOWGRID_DEVICE`** (see overview). HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see below).
+The HTTP `flowgrid` crate is stable; local LLM crates are **preview**. Checkpoint manifests may gain new fields. For **`flowgrid-serve`**, `usage` / `finish_reason` are **tokenizer-exact** when `FLOWGRID_SERVE_CHECKPOINT` (and manifest tokenizer) is used; pure echo without a tokenizer still uses the **byte heuristic** (~bytes/4). Details: [`docs/llm/overview.md`](docs/llm/overview.md). Optional **GPU** (Burn `Wgpu`): build `flowgrid-cli` / `flowgrid-serve` with **`--features gpu-wgpu`** and set **`FLOWGRID_DEVICE`** (see overview). Runtime presets can be selected with **`FLOWGRID_DEPLOYMENT_PROFILE=local|cloud|hybrid`**. HF `safetensors` beyond **F32** paths needs explicit dtype conversion (see [`decode_weight_tensor_f32_le`](crates/flowgrid-model/src/hf_loader.rs)); Windows full-feature tests should use an isolated `CARGO_TARGET_DIR` (see below).
 
 ### OpenAI-shaped server compatibility (`flowgrid-serve`)
 
@@ -41,8 +41,9 @@ Optional workspace crates under [`crates/`](crates/) add a **Rust-native** langu
 
 ```bash
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
-cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16 --n-head 4 --n-kv-head 0
+cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 16 --epochs 2 --batch-size 2 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train_demo.json
 cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # prompt echo on by default; use --no-echo for completion-only
+cargo run -p flowgrid-cli --profile local -- eval --dataset target/readme.bin --split test --train-frac 0.8 --val-frac 0.1 --run-report-out target/mlops/eval_demo.json
 cargo run -p flowgrid-serve   # OpenAI-shaped stub on :9000
 cargo run -p flowgrid-ui      # SQLite REST shell on :9010
 ```
@@ -327,6 +328,7 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 - **[`CHANGELOG.md`](CHANGELOG.md)** — release notes (Keep a Changelog).
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
 - **[`docs/dev-handbook.md`](docs/dev-handbook.md)** — contributor workflow, commands, Windows linker notes, release checklist.
+- **[`docs/ml-operations-handbook.md`](docs/ml-operations-handbook.md)** — phased LLM/ML implementation guide and deployment profiles.
 - **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
 - **[`docs/resilience.md`](docs/resilience.md)** — retries, custom status predicate, rate limits vs circuit breakers.
 - **[`docs/http.md`](docs/http.md)** — TLS, proxy env, timeouts, OpenAI-compatible bases.
@@ -340,7 +342,7 @@ See **[`docs/migration.md`](docs/migration.md)** for configuration, errors, stre
 
 ## Developer workflow (`just`)
 
-Optional [**`just`**](https://github.com/casey/just) recipes mirror CI: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just deny`, `just audit`.
+Optional [**`just`**](https://github.com/casey/just) recipes mirror CI: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just check-ml-core`, `just deny`, `just audit`.
 
 ## License
 

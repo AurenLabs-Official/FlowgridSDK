@@ -11,6 +11,27 @@ use std::sync::Arc;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
+#[derive(Debug, Clone, Copy)]
+enum DeploymentProfile {
+    Local,
+    Cloud,
+    Hybrid,
+}
+
+impl DeploymentProfile {
+    fn from_env() -> Self {
+        match std::env::var("FLOWGRID_DEPLOYMENT_PROFILE")
+            .unwrap_or_else(|_| "local".to_string())
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "cloud" => Self::Cloud,
+            "hybrid" => Self::Hybrid,
+            _ => Self::Local,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -23,6 +44,12 @@ async fn main() {
         );
     }
     let auth_cfg = AuthConfig::from_env();
+    let profile = DeploymentProfile::from_env();
+    let (default_rps, default_workers, default_queue_depth) = match profile {
+        DeploymentProfile::Local => (32_u64, 1_usize, 64_usize),
+        DeploymentProfile::Cloud => (256_u64, 4_usize, 512_usize),
+        DeploymentProfile::Hybrid => (96_u64, 2_usize, 256_usize),
+    };
     let max_body = std::env::var("FLOWGRID_SERVE_MAX_BODY_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -30,7 +57,7 @@ async fn main() {
     let rps = std::env::var("FLOWGRID_SERVE_RPS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(32);
+        .unwrap_or(default_rps);
     let burst = std::env::var("FLOWGRID_SERVE_BURST")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -48,11 +75,23 @@ async fn main() {
             queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(64),
+                .unwrap_or(default_queue_depth),
+            worker_threads: std::env::var("FLOWGRID_SERVE_WORKERS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(default_workers),
             request_timeout_ms: std::env::var("FLOWGRID_SERVE_REQUEST_TIMEOUT_MS")
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(10_000),
+            stream_buffer: std::env::var("FLOWGRID_SERVE_STREAM_BUFFER")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(64),
+            max_new_tokens: std::env::var("FLOWGRID_SERVE_MAX_NEW_TOKENS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|v| *v > 0),
         },
         llm,
     );
@@ -66,6 +105,9 @@ async fn main() {
         .layer(TraceLayer::new_for_http());
     let addr: SocketAddr = "127.0.0.1:9000".parse().expect("addr");
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
-    tracing::info!("flowgrid-serve listening on http://{addr}/v1/chat/completions");
+    tracing::info!(
+        profile = ?profile,
+        "flowgrid-serve listening on http://{addr}/v1/chat/completions"
+    );
     axum::serve(listener, app).await.expect("serve");
 }

@@ -36,6 +36,11 @@ semver-local:
 test-contracts:
     cargo test -p flowgrid --features full contract_
 
+# ML-core smoke loop (matches CI `ml-core-smoke`).
+check-ml-core:
+    cargo check -p flowgrid-data -p flowgrid-eval -p flowgrid-ml -p flowgrid-cli -p flowgrid-serve
+    cargo test -p flowgrid-data -p flowgrid-eval -p flowgrid-ml
+
 # Supply chain (requires `cargo install cargo-deny cargo-audit`; advisory DB updated at runtime).
 deny:
     cargo deny check

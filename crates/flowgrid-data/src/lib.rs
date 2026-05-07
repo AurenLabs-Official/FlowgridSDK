@@ -26,6 +26,54 @@ impl From<std::io::Error> for FgDataError {
 
 pub type FgDataResult<T> = Result<T, FgDataError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatasetSplit {
+    Train,
+    Val,
+    Test,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplitSpec {
+    /// Train fraction in `[0.0, 1.0]`.
+    pub train_frac: f32,
+    /// Validation fraction in `[0.0, 1.0]`.
+    pub val_frac: f32,
+}
+
+impl SplitSpec {
+    pub fn normalized(train_frac: f32, val_frac: f32) -> Self {
+        let train = train_frac.clamp(0.0, 1.0);
+        let val = val_frac.clamp(0.0, 1.0);
+        let sum = train + val;
+        if sum >= 0.999_999 {
+            // Keep at least a tiny non-train/val remainder for test if possible.
+            let scale = 0.999_999 / sum.max(1e-6);
+            return Self {
+                train_frac: train * scale,
+                val_frac: val * scale,
+            };
+        }
+        Self {
+            train_frac: train,
+            val_frac: val,
+        }
+    }
+}
+
+/// Compute `[start, end)` token bounds for a dataset split.
+pub fn split_bounds(total_tokens: usize, spec: SplitSpec, split: DatasetSplit) -> (usize, usize) {
+    let train_end = ((total_tokens as f64) * spec.train_frac as f64).round() as usize;
+    let val_end = ((total_tokens as f64) * (spec.train_frac + spec.val_frac) as f64).round() as usize;
+    let train_end = train_end.min(total_tokens);
+    let val_end = val_end.min(total_tokens).max(train_end);
+    match split {
+        DatasetSplit::Train => (0, train_end),
+        DatasetSplit::Val => (train_end, val_end),
+        DatasetSplit::Test => (val_end, total_tokens),
+    }
+}
+
 /// Read-only mmap of `u32` token ids (little-endian raw bytes).
 #[derive(Clone)]
 pub struct TokenMmap {
@@ -53,6 +101,11 @@ impl TokenMmap {
     #[inline]
     pub fn len_tokens(&self) -> usize {
         self.len_tokens
+    }
+
+    /// Bounds `[start, end)` for a logical split over the mmap.
+    pub fn split_bounds(&self, spec: SplitSpec, split: DatasetSplit) -> (usize, usize) {
+        split_bounds(self.len_tokens, spec, split)
     }
 
     /// Raw byte view of the mmap (length is `4 * len_tokens`).
@@ -103,4 +156,22 @@ pub fn write_token_blob(path: impl AsRef<Path>, ids: &[u32]) -> std::io::Result<
         f.write_all(&id.to_le_bytes())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_bounds_partition_full_range() {
+        let spec = SplitSpec::normalized(0.8, 0.1);
+        let (a0, a1) = split_bounds(100, spec, DatasetSplit::Train);
+        let (b0, b1) = split_bounds(100, spec, DatasetSplit::Val);
+        let (c0, c1) = split_bounds(100, spec, DatasetSplit::Test);
+        assert_eq!((a0, a1), (0, 80));
+        assert_eq!((b0, b1), (80, 90));
+        assert_eq!((c0, c1), (90, 100));
+        assert_eq!(a1, b0);
+        assert_eq!(b1, c0);
+    }
 }

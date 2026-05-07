@@ -7,6 +7,7 @@ For project policy and release notes, also see `CONTRIBUTING.md` and `CHANGELOG.
 
 - Stable crate: `crates/flowgrid` (public SDK surface).
 - Preview/local-LLM crates: `flowgrid-model`, `flowgrid-train`, `flowgrid-serve`, `flowgrid-cli`, `flowgrid-checkpoint`, etc.
+- Classical ML baseline crate: `crates/flowgrid-ml`.
 - Main docs:
   - `README.md` (top-level usage, features, compatibility).
   - `docs/http.md` (timeouts, TLS, proxies).
@@ -35,6 +36,7 @@ just test-full
 just check-examples
 just check-msrv
 just test-contracts
+just check-ml-core
 ```
 
 Direct Cargo equivalents:
@@ -140,7 +142,8 @@ Common local commands:
 
 ```bash
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
-cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 16 --n-head 4 --n-kv-head 0
+cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 16 --epochs 2 --batch-size 2 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train_demo.json
+cargo run -p flowgrid-cli --profile local -- eval --dataset target/readme.bin --split test --train-frac 0.8 --val-frac 0.1 --run-report-out target/mlops/eval_demo.json
 cargo run -p flowgrid-serve
 ```
 
@@ -153,6 +156,10 @@ Useful env vars for `flowgrid-serve`:
 - `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS`
 - `FLOWGRID_SERVE_RPS`
 - `FLOWGRID_SERVE_BURST`
+- `FLOWGRID_SERVE_WORKERS`
+- `FLOWGRID_SERVE_STREAM_BUFFER`
+- `FLOWGRID_SERVE_MAX_NEW_TOKENS`
+- `FLOWGRID_DEPLOYMENT_PROFILE` (`local`, `cloud`, `hybrid`)
 
 See `docs/llm/overview.md` for full details and current preview constraints.
 

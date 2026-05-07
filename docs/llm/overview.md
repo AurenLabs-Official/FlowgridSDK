@@ -31,6 +31,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 | `flowgrid-model` | `NanoGpt` (GQA), prealloc KV cache, RoPE, sampler, HF loaders |
 | `flowgrid-train` | CE loss, `TrainerConfig`, training loop helpers |
 | `flowgrid-eval` | Perplexity + regression gate |
+| `flowgrid-ml` | Classical ML baselines (regression/classification metrics + simple linear model) |
 | `flowgrid-checkpoint` | Manifest + Burn record I/O |
 | `flowgrid-cli` | `flowgrid-llm` (`prepare`, `train`, `generate`, `eval`, `merge-lora`) |
 | `flowgrid-serve` | OpenAI-shaped `/v1/chat/completions` + `/v1/responses` |
@@ -42,7 +43,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 ```bash
 cargo build -p flowgrid-cli
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
-cargo run -p flowgrid-cli -- train --tokens target/readme.bin --steps 32 --n-head 4 --n-kv-head 0
+cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 32 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train.json
 cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # echoes prompt prefix; `--no-echo` for completion-only
 ```
 
@@ -64,8 +65,10 @@ Same for **`flowgrid-serve`**: `cargo build -p flowgrid-serve --features gpu-wgp
 cargo run -p flowgrid-cli -- eval \
   --dataset data/eval.bin \
   --load path/to/ckpt \
+  --split test --train-frac 0.8 --val-frac 0.1 \
   --block 64 --stride 64 \
-  --baseline-ppl 12.0 --max-regression-pct 5
+  --baseline-ppl 12.0 --max-regression-pct 5 \
+  --run-report-out target/mlops/eval.json
 ```
 
 ### Local OpenAI-shaped server
@@ -78,6 +81,14 @@ cargo run -p flowgrid-serve
 ```
 
 Optional: `FLOWGRID_SERVE_TEMPERATURE`, `FLOWGRID_SERVE_TOP_K`, `FLOWGRID_SERVE_SEED`, `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS` (bounds each generation; default 10_000), **`FLOWGRID_SERVE_RPS`** (requests/sec token bucket refill; default `32`), **`FLOWGRID_SERVE_BURST`** (max bucket tokens; defaults to **`FLOWGRID_SERVE_RPS`**), `FLOWGRID_SERVE_MAX_BODY_BYTES`.
+
+Additional throughput/backpressure knobs:
+
+- `FLOWGRID_SERVE_WORKERS` (scheduler workers; local checkpoint mode currently clamps to one worker for safety)
+- `FLOWGRID_SERVE_STREAM_BUFFER` (per-request stream channel capacity)
+- `FLOWGRID_SERVE_MAX_NEW_TOKENS` (hard cap at scheduler ingress)
+
+Deployment profile presets are selected via **`FLOWGRID_DEPLOYMENT_PROFILE=local|cloud|hybrid`**. Profiles tune default worker/queue/rate knobs; explicit `FLOWGRID_SERVE_*` env vars still take precedence.
 
 ### Usage / `finish_reason` (exact vs approximate)
 
