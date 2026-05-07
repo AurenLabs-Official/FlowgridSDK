@@ -10,9 +10,29 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 use crate::openai_compat::{openai_error_response, responses_usage_tokens};
+use crate::scheduler::SchedulerSubmitError;
 use crate::stream_sse;
 use crate::types::ResponsesReq;
 use crate::AppState;
+
+fn scheduler_error_response(err: anyhow::Error) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let msg = err.to_string();
+    match err.downcast_ref::<SchedulerSubmitError>() {
+        Some(SchedulerSubmitError::Overloaded) => openai_error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_error",
+            "server_overloaded",
+            msg,
+        ),
+        Some(SchedulerSubmitError::Closed) | None => openai_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "server_error",
+            "scheduler_error",
+            msg,
+        ),
+    }
+}
 
 fn flatten_input(v: &serde_json::Value) -> String {
     match v {
@@ -55,12 +75,7 @@ pub async fn responses(
         let rx = match st.scheduler.submit_stream(text_in.clone(), max_new).await {
             Ok(r) => r,
             Err(e) => {
-                return openai_error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "server_error",
-                    "scheduler_error",
-                    e.to_string(),
-                );
+                return scheduler_error_response(e);
             }
         };
         let id = Uuid::new_v4().to_string();
@@ -82,12 +97,7 @@ pub async fn responses(
     let out = match st.scheduler.submit_plain(text_in.clone(), max_new).await {
         Ok(o) => o,
         Err(e) => {
-            return openai_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "scheduler_error",
-                e.to_string(),
-            );
+            return scheduler_error_response(e);
         }
     };
     (

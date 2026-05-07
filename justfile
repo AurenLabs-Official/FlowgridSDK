@@ -41,6 +41,40 @@ check-ml-core:
     cargo check -p flowgrid-data -p flowgrid-eval -p flowgrid-ml -p flowgrid-cli -p flowgrid-serve
     cargo test -p flowgrid-data -p flowgrid-eval -p flowgrid-ml
 
+# LLM golden path with reproducible train/eval reports.
+golden-llm-path:
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/golden_readme.bin --steps 8 --epochs 2 --batch-size 2 --learn --seed 7 --run-report-out target/mlops/golden_llm_train.json
+    cargo run -p flowgrid-cli --profile local -- eval --dataset target/mlops/golden_readme.bin --split test --train-frac 0.8 --val-frac 0.1 --baseline-ppl 100.0 --max-regression-pct 100.0 --run-report-out target/mlops/golden_llm_eval.json
+
+# Classical ML golden path report.
+golden-classical-ml-path:
+    cargo run -p flowgrid-ml --example golden_classical_ml -- --out target/mlops/golden_classical_ml.json
+
+# Quick reproducibility gate (same seed => same quality band).
+repro-ml-smoke:
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin
+    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_a.json
+    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
+    python tools/check_train_repro.py --a target/mlops/repro_a.json --b target/mlops/repro_b.json --max-delta 1e-6
+
+# Serve KPI smoke for baseline capture (run while `flowgrid-serve` is up).
+kpi-serve-local:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 32 --max-tokens 32 --out target/mlops/kpi_local.json
+
+kpi-serve-hybrid:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 64 --max-tokens 64 --out target/mlops/kpi_hybrid.json
+
+kpi-serve-cloud:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 128 --max-tokens 64 --out target/mlops/kpi_cloud.json
+
+# Aggregated ops-ready artifact loop.
+ops-release-pack:
+    just golden-llm-path
+    just golden-classical-ml-path
+    just repro-ml-smoke
+    python tools/build_kpi_achievement_report.py --out target/mlops/kpi_achievement_report.md
+
 # Supply chain (requires `cargo install cargo-deny cargo-audit`; advisory DB updated at runtime).
 deny:
     cargo deny check

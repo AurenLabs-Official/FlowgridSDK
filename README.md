@@ -329,6 +329,9 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
 - **[`docs/dev-handbook.md`](docs/dev-handbook.md)** — contributor workflow, commands, Windows linker notes, release checklist.
 - **[`docs/ml-operations-handbook.md`](docs/ml-operations-handbook.md)** — phased LLM/ML implementation guide and deployment profiles.
+- **[`docs/profile-pack.md`](docs/profile-pack.md)** — operations-ready profile pack for `local|hybrid|cloud`.
+- **[`docs/loadtest-matrix.md`](docs/loadtest-matrix.md)** — baseline KPI matrix for `local|cloud|hybrid`.
+- **[`docs/runbook-quickstart.md`](docs/runbook-quickstart.md)** — incident and operations quickstart for serve/runtime.
 - **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
 - **[`docs/resilience.md`](docs/resilience.md)** — retries, custom status predicate, rate limits vs circuit breakers.
 - **[`docs/http.md`](docs/http.md)** — TLS, proxy env, timeouts, OpenAI-compatible bases.
@@ -342,7 +345,7 @@ See **[`docs/migration.md`](docs/migration.md)** for configuration, errors, stre
 
 ## Developer workflow (`just`)
 
-Optional [**`just`**](https://github.com/casey/just) recipes mirror CI: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just check-ml-core`, `just deny`, `just audit`.
+Optional [**`just`**](https://github.com/casey/just) recipes mirror CI and ops loops: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just check-ml-core`, `just golden-llm-path`, `just golden-classical-ml-path`, `just repro-ml-smoke`, `just ops-release-pack`, `just deny`, `just audit`.
 
 ## License
 

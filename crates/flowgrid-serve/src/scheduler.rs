@@ -9,6 +9,14 @@ use std::time::{Duration, Instant};
 use crate::completion::{CompletionMeta, PlainOutput, StreamPart};
 use crate::engine::{serve_sampling_from_env, serve_seed_from_env, LocalLlm};
 
+#[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
+pub enum SchedulerSubmitError {
+    #[error("scheduler queue overloaded")]
+    Overloaded,
+    #[error("scheduler queue closed")]
+    Closed,
+}
+
 #[derive(Clone)]
 pub struct Scheduler {
     worker_txs: Arc<Vec<mpsc::SyncSender<SchedulerReq>>>,
@@ -217,13 +225,15 @@ impl Scheduler {
     pub async fn submit_plain(&self, prompt: String, max_new: usize) -> Result<PlainOutput> {
         let (tx, rx) = std::sync::mpsc::channel();
         let idx = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.worker_txs.len();
-        self.worker_txs[idx]
-            .send(SchedulerReq::Plain {
+        Self::dispatch(
+            &self.worker_txs[idx],
+            SchedulerReq::Plain {
                 prompt,
                 max_new,
                 respond: tx,
-            })
-            .map_err(|_| anyhow!("scheduler queue closed"))?;
+            },
+        )
+        .map_err(anyhow::Error::new)?;
         let recv_result = tokio::task::spawn_blocking(move || rx.recv())
             .await
             .map_err(|e| anyhow!(e.to_string()))?;
@@ -240,13 +250,56 @@ impl Scheduler {
     ) -> Result<tokio::sync::mpsc::Receiver<Result<StreamPart, anyhow::Error>>> {
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(self.stream_buffer.max(1));
         let idx = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.worker_txs.len();
-        self.worker_txs[idx]
-            .send(SchedulerReq::Stream {
+        Self::dispatch(
+            &self.worker_txs[idx],
+            SchedulerReq::Stream {
                 prompt,
                 max_new,
                 chunk_tx,
-            })
-            .map_err(|_| anyhow!("scheduler queue closed"))?;
+            },
+        )
+        .map_err(anyhow::Error::new)?;
         Ok(chunk_rx)
+    }
+
+    fn dispatch(
+        tx: &mpsc::SyncSender<SchedulerReq>,
+        req: SchedulerReq,
+    ) -> std::result::Result<(), SchedulerSubmitError> {
+        match tx.try_send(req) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(_)) => Err(SchedulerSubmitError::Overloaded),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(SchedulerSubmitError::Closed),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_reports_overloaded_on_full_queue() {
+        let (tx, _rx) = mpsc::sync_channel::<SchedulerReq>(1);
+        let (resp_tx, _resp_rx) = mpsc::channel();
+        Scheduler::dispatch(
+            &tx,
+            SchedulerReq::Plain {
+                prompt: "a".to_string(),
+                max_new: 1,
+                respond: resp_tx.clone(),
+            },
+        )
+        .expect("first request fits");
+        let err = Scheduler::dispatch(
+            &tx,
+            SchedulerReq::Plain {
+                prompt: "b".to_string(),
+                max_new: 1,
+                respond: resp_tx,
+            },
+        )
+        .expect_err("second request must see full queue");
+        assert_eq!(err, SchedulerSubmitError::Overloaded);
     }
 }

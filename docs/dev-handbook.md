@@ -147,6 +147,15 @@ cargo run -p flowgrid-cli --profile local -- eval --dataset target/readme.bin --
 cargo run -p flowgrid-serve
 ```
 
+Operational loops:
+
+```bash
+just golden-llm-path
+just golden-classical-ml-path
+just repro-ml-smoke
+just ops-release-pack
+```
+
 Useful env vars for `flowgrid-serve`:
 
 - `FLOWGRID_SERVE_CHECKPOINT`
@@ -162,6 +171,7 @@ Useful env vars for `flowgrid-serve`:
 - `FLOWGRID_DEPLOYMENT_PROFILE` (`local`, `cloud`, `hybrid`)
 
 See `docs/llm/overview.md` for full details and current preview constraints.
+Runbook entrypoint for incidents and profile bring-up: `docs/runbook-quickstart.md`.
 
 ## 11) Release hygiene checklist
 

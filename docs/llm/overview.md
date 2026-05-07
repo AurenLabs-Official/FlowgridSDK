@@ -90,6 +90,18 @@ Additional throughput/backpressure knobs:
 
 Deployment profile presets are selected via **`FLOWGRID_DEPLOYMENT_PROFILE=local|cloud|hybrid`**. Profiles tune default worker/queue/rate knobs; explicit `FLOWGRID_SERVE_*` env vars still take precedence.
 
+### Baseline loadtest + KPI capture
+
+Use the profile matrix in `docs/loadtest-matrix.md` and generate machine-readable reports:
+
+```bash
+just kpi-serve-local
+just kpi-serve-hybrid
+just kpi-serve-cloud
+```
+
+All runs emit `serve_kpi_smoke_v1` JSON under `target/mlops/`.
+
 ### Usage / `finish_reason` (exact vs approximate)
 
 | Mode | `prompt_tokens` / `completion_tokens` | `finish_reason` |
@@ -108,6 +120,8 @@ Non-streaming and streaming responses share these rules so clients do not need s
 
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
 `cargo test --workspace`, plus Linux `cargo test -p flowgrid --features full` and a **Windows** job with `CARGO_TARGET_DIR=target/win-full` to catch linker locking issues (see root `README.md`).
+
+ML reproducibility smoke is enforced in CI by running two same-seed train runs and checking report deltas (`tools/check_train_repro.py`).
 
 ## Dependency pin
 

@@ -93,6 +93,60 @@ Local equivalent:
 just check-ml-core
 ```
 
+Reproducibility smoke gate:
+
+```bash
+just repro-ml-smoke
+```
+
+## Baseline KPI + loadtest matrix
+
+Use the profile matrix in `docs/loadtest-matrix.md` and generate reports with:
+
+```bash
+just kpi-serve-local
+just kpi-serve-hybrid
+just kpi-serve-cloud
+```
+
+Each run produces a `serve_kpi_smoke_v1` JSON artifact under `target/mlops/`.
+
+## Golden paths (release candidates)
+
+### 1) LLM path
+
+```bash
+just golden-llm-path
+```
+
+Artifacts:
+
+- `target/mlops/golden_llm_train.json`
+- `target/mlops/golden_llm_eval.json`
+
+### 2) Classical ML path
+
+```bash
+just golden-classical-ml-path
+```
+
+Artifact:
+
+- `target/mlops/golden_classical_ml.json`
+
+## Operations-ready pack
+
+Bundle all required artifacts:
+
+```bash
+just ops-release-pack
+```
+
+Runbook for incidents and bring-up:
+
+- `docs/runbook-quickstart.md`
+- `docs/profile-pack.md`
+
 ## Phase delivery baseline (12 weeks)
 
 ### Weeks 1-4

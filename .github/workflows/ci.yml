@@ -37,6 +37,19 @@ jobs:
       - name: test (ML core crates)
         run: cargo test -p flowgrid-data -p flowgrid-eval -p flowgrid-ml
 
+  ml-repro-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: reproducibility gate
+        run: |
+          cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin
+          cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_a.json
+          cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
+          python tools/check_train_repro.py --a target/mlops/repro_a.json --b target/mlops/repro_b.json --max-delta 1e-6
+
   rust:
     runs-on: ubuntu-latest
     steps:

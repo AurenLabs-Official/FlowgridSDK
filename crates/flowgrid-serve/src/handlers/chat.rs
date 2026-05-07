@@ -9,9 +9,28 @@ use serde_json::json;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 use crate::openai_compat::{chat_usage_tokens, openai_error_response};
+use crate::scheduler::SchedulerSubmitError;
 use crate::stream_sse;
 use crate::types::ChatReq;
 use crate::AppState;
+
+fn scheduler_error_response(err: anyhow::Error) -> axum::response::Response {
+    let msg = err.to_string();
+    match err.downcast_ref::<SchedulerSubmitError>() {
+        Some(SchedulerSubmitError::Overloaded) => openai_error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_error",
+            "server_overloaded",
+            msg,
+        ),
+        Some(SchedulerSubmitError::Closed) | None => openai_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "server_error",
+            "scheduler_error",
+            msg,
+        ),
+    }
+}
 
 pub async fn chat_completions(
     State(st): State<std::sync::Arc<AppState>>,
@@ -46,12 +65,7 @@ pub async fn chat_completions(
         let rx = match st.scheduler.submit_stream(prompt.clone(), max_new).await {
             Ok(r) => r,
             Err(e) => {
-                return openai_error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "server_error",
-                    "scheduler_error",
-                    e.to_string(),
-                );
+                return scheduler_error_response(e);
             }
         };
         let id = Uuid::new_v4().to_string();
@@ -73,12 +87,7 @@ pub async fn chat_completions(
     let out = match st.scheduler.submit_plain(prompt.clone(), max_new).await {
         Ok(o) => o,
         Err(e) => {
-            return openai_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "scheduler_error",
-                e.to_string(),
-            );
+            return scheduler_error_response(e);
         }
     };
     (
