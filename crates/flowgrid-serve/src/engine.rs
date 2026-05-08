@@ -219,10 +219,7 @@ mod eos_completion_token_tests {
             return completion_tokens;
         }
         completion_tokens += 1;
-        for &step_eos in eos_on_extra_steps
-            .iter()
-            .take(max_gen.saturating_sub(1))
-        {
+        for &step_eos in eos_on_extra_steps.iter().take(max_gen.saturating_sub(1)) {
             if step_eos {
                 return completion_tokens;
             }

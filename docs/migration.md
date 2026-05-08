@@ -2,6 +2,8 @@
 
 This guide sketches a move from **official first-party SDKs** or **hand-written `reqwest`** to **`flowgrid`**. Exact steps depend on how much of each provider you use.
 
+**Toolchain:** the workspace targets **Rust 1.85+** (see root `Cargo.toml` `rust-version`). **`flowgrid` 0.2** adds public fields on **`ClientConfig`** / **`ListPage`**; update struct literals (or use `..` / builders) when upgrading from **0.1**.
+
 ## From official OpenAI / Anthropic SDKs (other languages or Rust wrappers)
 
 1. **Map client configuration** to [`OpenAiClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.OpenAiClientConfig.html) / [`AnthropicClientConfig`](https://docs.rs/flowgrid/latest/flowgrid/type.AnthropicClientConfig.html) (base URL, API key, optional headers). Use [`ClientBuilder`](https://docs.rs/flowgrid/latest/flowgrid/struct.ClientBuilder.html) / [`AnthropicBuilder`](https://docs.rs/flowgrid/latest/flowgrid/struct.AnthropicBuilder.html) for defaults.

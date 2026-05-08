@@ -46,7 +46,7 @@ cargo fmt --all -- --check
 cargo clippy -p flowgrid --features full -- -D warnings
 cargo test -p flowgrid --features full
 cargo check -p flowgrid --examples --features full
-cargo +1.75 check -p flowgrid --features full
+cargo +1.85 check -p flowgrid --features full
 ```
 
 ## 4) Feature-flag rules (important)
@@ -141,7 +141,7 @@ just test-contracts
 Common local commands:
 
 ```bash
-cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
+cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin --byte-level
 cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 16 --epochs 2 --batch-size 2 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train_demo.json
 cargo run -p flowgrid-cli --profile local -- eval --dataset target/readme.bin --split test --train-frac 0.8 --val-frac 0.1 --run-report-out target/mlops/eval_demo.json
 cargo run -p flowgrid-serve

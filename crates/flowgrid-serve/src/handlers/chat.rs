@@ -1,3 +1,8 @@
+use crate::openai_compat::{chat_usage_tokens, openai_error_response};
+use crate::scheduler::SchedulerSubmitError;
+use crate::stream_sse;
+use crate::types::ChatReq;
+use crate::AppState;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::header;
@@ -8,11 +13,6 @@ use futures::stream::StreamExt;
 use serde_json::json;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
-use crate::openai_compat::{chat_usage_tokens, openai_error_response};
-use crate::scheduler::SchedulerSubmitError;
-use crate::stream_sse;
-use crate::types::ChatReq;
-use crate::AppState;
 
 fn scheduler_error_response(err: anyhow::Error) -> axum::response::Response {
     let msg = err.to_string();

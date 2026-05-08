@@ -40,7 +40,7 @@ Optional workspace crates under [`crates/`](crates/) add a **Rust-native** langu
 - Close duplicate builds, pause rust-analyzer rebuilds if needed, then retry. `cargo check -p flowgrid --features full --tests` staying green while `cargo test` fails usually confirms locking rather than a code error.
 
 ```bash
-cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin
+cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin --byte-level
 cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 16 --epochs 2 --batch-size 2 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train_demo.json
 cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # prompt echo on by default; use --no-echo for completion-only
 cargo run -p flowgrid-cli --profile local -- eval --dataset target/readme.bin --split test --train-frac 0.8 --val-frac 0.1 --run-report-out target/mlops/eval_demo.json
@@ -175,7 +175,7 @@ ANTHROPIC_API_KEY=sk-ant-... cargo run -p flowgrid --example anthropic_message -
 
 ## MSRV
 
-Rust **1.75** (see [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml)).
+Rust **1.85** (see root [`Cargo.toml`](Cargo.toml) `workspace.package.rust-version`).
 
 ## Using `flowgrid`
 

@@ -118,7 +118,10 @@ pub struct ClassificationMetrics {
 }
 
 /// Binary classification metrics (`0/1` labels).
-pub fn binary_classification_metrics(y_true: &[u8], y_pred: &[u8]) -> MlResult<ClassificationMetrics> {
+pub fn binary_classification_metrics(
+    y_true: &[u8],
+    y_pred: &[u8],
+) -> MlResult<ClassificationMetrics> {
     if y_true.is_empty() || y_pred.is_empty() {
         return Err(MlError::Empty);
     }
@@ -143,8 +146,16 @@ pub fn binary_classification_metrics(y_true: &[u8], y_pred: &[u8]) -> MlResult<C
     }
     let n = y_true.len() as f64;
     let accuracy = (tp + tn) / n.max(1.0);
-    let precision = if tp + fp <= f64::EPSILON { 0.0 } else { tp / (tp + fp) };
-    let recall = if tp + fn_ <= f64::EPSILON { 0.0 } else { tp / (tp + fn_) };
+    let precision = if tp + fp <= f64::EPSILON {
+        0.0
+    } else {
+        tp / (tp + fp)
+    };
+    let recall = if tp + fn_ <= f64::EPSILON {
+        0.0
+    } else {
+        tp / (tp + fn_)
+    };
     let f1 = if precision + recall <= f64::EPSILON {
         0.0
     } else {

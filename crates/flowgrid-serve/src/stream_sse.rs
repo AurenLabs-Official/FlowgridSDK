@@ -93,8 +93,7 @@ mod tests {
 
     #[test]
     fn chat_error_emits_event_error_without_done() {
-        let chunks =
-            chat_completion_sse_chunks("id1", "m", Err(anyhow::anyhow!("boom")));
+        let chunks = chat_completion_sse_chunks("id1", "m", Err(anyhow::anyhow!("boom")));
         assert_eq!(chunks.len(), 1);
         let s = String::from_utf8_lossy(&chunks[0]);
         assert!(s.contains("event: error"), "{s}");

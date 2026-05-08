@@ -1,6 +1,6 @@
 use flowgrid_ml::{
-    binary_classification_metrics, fit_linear_regression, regression_metrics, ClassificationMetrics,
-    LinearModel, RegressionMetrics,
+    binary_classification_metrics, fit_linear_regression, regression_metrics,
+    ClassificationMetrics, LinearModel, RegressionMetrics,
 };
 use serde::Serialize;
 use std::env;

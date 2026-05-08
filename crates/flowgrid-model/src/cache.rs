@@ -100,8 +100,7 @@ mod tests {
     fn prealloc_append_reaches_full_span_without_panic() {
         let device = burn_ndarray::NdArrayDevice::Cpu;
         let max_seq = 8_usize;
-        let mut c: KvCache<BB> =
-            KvCache::with_capacity(1, 2, max_seq, 4, &device);
+        let mut c: KvCache<BB> = KvCache::with_capacity(1, 2, max_seq, 4, &device);
         for step in 0..max_seq {
             let k = Tensor::<BB, 4>::zeros([1, 2, 1, 4], &device);
             let v = Tensor::<BB, 4>::zeros([1, 2, 1, 4], &device);

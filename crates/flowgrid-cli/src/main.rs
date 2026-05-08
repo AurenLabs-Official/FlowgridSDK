@@ -50,8 +50,10 @@ enum Cmd {
         input: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        /// HuggingFace-style tokenizer (omit for UTF-8 byte ids, same as `--byte-level`).
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        /// Encode UTF-8 bytes as token ids (`0..256`). Implied when `--tokenizer` is omitted.
         #[arg(long)]
         byte_level: bool,
     },
@@ -216,8 +218,7 @@ struct EvalRunReport {
 
 fn write_json_report(path: &PathBuf, value: &impl serde::Serialize) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let body = serde_json::to_vec_pretty(value)?;
     std::fs::write(path, body).with_context(|| format!("write {}", path.display()))?;
@@ -258,16 +259,21 @@ fn main() -> Result<()> {
         } => {
             let text = std::fs::read_to_string(&input)
                 .with_context(|| format!("read {}", input.display()))?;
-            let ids: Vec<u32> = if byte_level {
-                text.bytes().map(|b| b as u32).collect()
-            } else if let Some(path) = tokenizer {
-                let tok = FgTokenizer::from_file(&path)
-                    .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
-                tok.encode(&text, true)
-                    .map_err(|e| anyhow::anyhow!("tokenize input: {e}"))?
-            } else {
-                anyhow::bail!("tokenizer-native mode requires --tokenizer (or use --byte-level)");
+            let ids: Vec<u32> = match (byte_level, tokenizer.as_ref()) {
+                (true, _) | (false, None) => text.bytes().map(|b| b as u32).collect(),
+                (false, Some(path)) => {
+                    let tok = FgTokenizer::from_file(path)
+                        .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", path.display()))?;
+                    tok.encode(&text, true)
+                        .map_err(|e| anyhow::anyhow!("tokenize input: {e}"))?
+                }
             };
+            if let Some(parent) = output.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("create {}", parent.display()))?;
+                }
+            }
             write_token_blob(&output, &ids)
                 .with_context(|| format!("write {}", output.display()))?;
             println!("wrote {} token ids -> {}", ids.len(), output.display());
@@ -392,9 +398,12 @@ fn main() -> Result<()> {
                         for _ in 0..batch_size.max(1) {
                             rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
                             let start = (rng + step * 31 + micro * 17) % span;
-                            if let Some(b) =
-                                batch_from_mmap::<DiffBackend>(&mmap, start, cfg.block_size, &device)
-                            {
+                            if let Some(b) = batch_from_mmap::<DiffBackend>(
+                                &mmap,
+                                start,
+                                cfg.block_size,
+                                &device,
+                            ) {
                                 let sample_loss = loss_for_window(&model, b, &device);
                                 batch_loss_sum = Some(match batch_loss_sum {
                                     Some(prev) => prev + sample_loss,

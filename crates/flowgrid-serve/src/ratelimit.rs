@@ -42,8 +42,7 @@ impl RateLimitState {
         };
         let (tokens, last) = *guard;
         let elapsed_ms = now.saturating_sub(last) as f64;
-        let mut t =
-            (tokens + elapsed_ms * (self.rps as f64 / 1000.0)).min(self.capacity as f64);
+        let mut t = (tokens + elapsed_ms * (self.rps as f64 / 1000.0)).min(self.capacity as f64);
         if t >= 1.0 {
             t -= 1.0;
             *guard = (t, now);
@@ -72,7 +71,10 @@ mod tests {
                 ok += 1;
             }
         }
-        assert_eq!(ok as u64, cap, "immediate burst should saturate at capacity");
+        assert_eq!(
+            ok as u64, cap,
+            "immediate burst should saturate at capacity"
+        );
     }
 
     #[test]

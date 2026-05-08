@@ -68,6 +68,7 @@ pub fn resolve_job_argv(
             env.prepare_input.into(),
             "-o".into(),
             env.train_tokens.into(),
+            "--byte-level".into(),
         ]),
         ("train-tiny", "train") => Ok(vec![
             "cargo".into(),

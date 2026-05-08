@@ -143,13 +143,14 @@ fn model_path(dir: &Path) -> PathBuf {
 }
 
 fn hash_model_file_blake3(path: &Path) -> Result<[u8; 32]> {
-    let mut f = BufReader::new(
-        File::open(path).with_context(|| format!("open {}", path.display()))?,
-    );
+    let mut f =
+        BufReader::new(File::open(path).with_context(|| format!("open {}", path.display()))?);
     let mut h = blake3::Hasher::new();
     let mut buf = [0u8; 8192];
     loop {
-        let n = f.read(&mut buf).with_context(|| format!("read {}", path.display()))?;
+        let n = f
+            .read(&mut buf)
+            .with_context(|| format!("read {}", path.display()))?;
         if n == 0 {
             break;
         }

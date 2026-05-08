@@ -71,10 +71,7 @@ fn sse_inference_error_event_without_done_sentinel() {
         text.contains("event: error"),
         "expected event: error, got: {text}"
     );
-    assert!(
-        text.contains("data:"),
-        "expected data line, got: {text}"
-    );
+    assert!(text.contains("data:"), "expected data line, got: {text}");
     assert!(
         !text.contains("[DONE]"),
         "must not send [DONE] after stream error, got: {text}"

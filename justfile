@@ -21,7 +21,7 @@ check-examples:
 
 # Minimum supported Rust version (same as CI `msrv`).
 check-msrv:
-    cargo +1.75 check -p flowgrid --features full
+    cargo +1.85 check -p flowgrid --features full
 
 # OpenTelemetry-only smoke check (same as CI matrix helper).
 check-opentelemetry:
@@ -43,7 +43,7 @@ check-ml-core:
 
 # LLM golden path with reproducible train/eval reports.
 golden-llm-path:
-    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin --byte-level
     cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/golden_readme.bin --steps 8 --epochs 2 --batch-size 2 --learn --seed 7 --run-report-out target/mlops/golden_llm_train.json
     cargo run -p flowgrid-cli --profile local -- eval --dataset target/mlops/golden_readme.bin --split test --train-frac 0.8 --val-frac 0.1 --baseline-ppl 100.0 --max-regression-pct 100.0 --run-report-out target/mlops/golden_llm_eval.json
 
@@ -60,16 +60,16 @@ compare-train-repro-delta:
 
 # UI-oriented workload template smokes.
 template-train-lora-smoke:
-    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin --byte-level
     cargo run -p flowgrid-cli -- train --tokens target/mlops/golden_readme.bin --steps 8 --vocab 256 --block 32 --layers 2 --embd 64 --lora --lora-targets q,v,o --run-report-out target/mlops/train_lora_smoke_report.json
 
 template-eval-val-gate:
-    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin --byte-level
     cargo run -p flowgrid-cli -- eval --dataset target/mlops/golden_readme.bin --split val --train-frac 0.8 --val-frac 0.1 --block 32 --stride 32 --run-report-out target/mlops/eval_val_gate_report.json
 
 # Quick reproducibility gate (same seed => same quality band).
 repro-ml-smoke:
-    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin
+    cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin --byte-level
     cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_a.json
     cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
     python tools/check_train_repro.py --a target/mlops/repro_a.json --b target/mlops/repro_b.json --max-delta 1e-6

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-05-07
 
-Preview-only **breaking** adjustments for the local LLM workspace crates (the stable `flowgrid` HTTP SDK is unchanged except as noted in docs).
+Preview-only **breaking** adjustments for the local LLM workspace crates; the **`flowgrid` HTTP SDK** also ships **0.2.0** with additive public fields (see `[Unreleased]` / release notes when published).
 
 ### Added
 
@@ -26,6 +26,11 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - README “OpenAI-shaped compat” table for `flowgrid-serve`; `docs/llm/overview.md` usage and manifest migration notes.
 
 ## [Unreleased]
+
+### Breaking (`flowgrid` HTTP crate)
+
+- **`flowgrid` 0.2.0** on crates.io surface: **`ClientConfig.http_client_builder_hook`** and **`ListPage.extra`** (update struct literals or use `..` / builders). Semver baseline **`crates/flowgrid/semver/baseline_rustdoc.json`** refreshed for CI.
+- **MSRV** for the workspace (and `flowgrid`) raised to **1.85** (current `reqwest` / `hyper-rustls` stack).
 
 ### Breaking (preview crates)
 
@@ -87,6 +92,7 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - **README:** duplicate compatibility paragraph removed.
 - **`azure` module rustdoc:** link to [`docs/http.md`](docs/http.md) now points at the workspace-root file.
 - `flowgrid-ml`: **`multiclass_classification_metrics`** label bounds check no longer uses `num_classes as u8` (fixes incorrect failures when `num_classes == 256`).
+- Docs/CI/`just`: `prepare` smoke commands now pass **`--byte-level`** when no `--tokenizer` is set (matches CLI requirement).
 
 ### Documentation
 

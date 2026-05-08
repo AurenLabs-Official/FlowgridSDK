@@ -3,6 +3,18 @@
 
 [advisories]
 version = 2
+# Transitive only; tracked for removal when Burn / tokenizers move their trees.
+ignore = [
+    # burn-core 0.13 + workspace pin `=2.0.0-rc.3`; no maintained bincode 2 line per advisory.
+    { id = "RUSTSEC-2025-0141", reason = "Transitive bincode 2.0.0-rc.3 via burn-core; pinned for Burn 0.13 API." },
+    # burn-dataset -> gix-tempfile -> gitoxide stack; upgrade blocked on Burn release.
+    { id = "RUSTSEC-2025-0021", reason = "Transitive gix-features via burn-dataset; no Burn bump in this workspace yet." },
+    { id = "RUSTSEC-2024-0350", reason = "Transitive gix-fs via burn-dataset; no Burn bump in this workspace yet." },
+    # tokenizers -> indicatif -> number_prefix (unmaintained; upstream choice).
+    { id = "RUSTSEC-2025-0119", reason = "Transitive number_prefix via tokenizers/indicatif." },
+    # tokenizers -> paste (archived; upstream choice).
+    { id = "RUSTSEC-2024-0436", reason = "Transitive paste via tokenizers." },
+]
 
 [bans]
 multiple-versions = "warn"
@@ -18,12 +30,10 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Zlib",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "MPL-2.0",
     "CC0-1.0",
     "Unlicense",
-    "OpenSSL",
     "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8

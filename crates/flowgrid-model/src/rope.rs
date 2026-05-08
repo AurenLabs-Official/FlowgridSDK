@@ -53,7 +53,9 @@ pub fn apply_rope_qk<B: Backend>(
         3,
     );
 
-    let k1 = k.clone().slice([0..batch_k, 0..n_head_k, 0..seq_k, 0..half]);
+    let k1 = k
+        .clone()
+        .slice([0..batch_k, 0..n_head_k, 0..seq_k, 0..half]);
     let k2 = k.slice([0..batch_k, 0..n_head_k, 0..seq_k, half..head_dim]);
     let k_out = Tensor::cat(
         vec![

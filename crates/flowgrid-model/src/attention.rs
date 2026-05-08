@@ -36,8 +36,7 @@ pub struct CausalSelfAttn<B: Backend> {
 impl CausalSelfAttnConfig {
     pub fn init<B: Backend>(&self, n_embd: usize, device: &B::Device) -> CausalSelfAttn<B> {
         let disabled = LoraLinearConfig { r: 1, alpha: 0.0 };
-        let proj =
-            |n_in, n_out| disabled.init(LinearConfig::new(n_in, n_out).init(device), device);
+        let proj = |n_in, n_out| disabled.init(LinearConfig::new(n_in, n_out).init(device), device);
         let nh = self.n_head.max(1);
         let n_kv = self.n_kv_head.max(1);
         let d_k = self.head_dim.max(1);

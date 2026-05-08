@@ -64,7 +64,8 @@ impl SplitSpec {
 /// Compute `[start, end)` token bounds for a dataset split.
 pub fn split_bounds(total_tokens: usize, spec: SplitSpec, split: DatasetSplit) -> (usize, usize) {
     let train_end = ((total_tokens as f64) * spec.train_frac as f64).round() as usize;
-    let val_end = ((total_tokens as f64) * (spec.train_frac + spec.val_frac) as f64).round() as usize;
+    let val_end =
+        ((total_tokens as f64) * (spec.train_frac + spec.val_frac) as f64).round() as usize;
     let train_end = train_end.min(total_tokens);
     let val_end = val_end.min(total_tokens).max(train_end);
     match split {
