@@ -17,13 +17,25 @@ For project policy and release notes, also see `CONTRIBUTING.md` and `CHANGELOG.
 
 ## 2) Prerequisites
 
-- Rust stable toolchain.
+- Rust stable toolchain (**MSRV 1.85** for `flowgrid`; see root `Cargo.toml`).
 - Rust nightly for semver checks (`cargo +nightly rustdoc`).
 - Optional tools:
   - `just` (task runner).
   - `cargo-semver-checks`.
   - `cargo-deny`.
   - `cargo-audit`.
+
+## 2.1) Windows: isolated `CARGO_TARGET_DIR`
+
+Parallel `cargo test` / IDE builds can hold locks on `target\…` and trigger **`LNK1104`**. For noisy environments or full-feature test runs:
+
+```powershell
+$env:CARGO_TARGET_DIR = "target\full"
+$env:CARGO_BUILD_JOBS = "1"
+cargo test -p flowgrid --features full
+```
+
+See also top-level **[README.md](../README.md)** (LLM stack / Windows section).
 
 ## 3) Build and test commands
 

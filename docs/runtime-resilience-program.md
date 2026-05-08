@@ -52,6 +52,11 @@ Each release candidate must include:
 - `target/mlops/kpi_cloud.json`
 - Drill notes linked from `docs/runbook-quickstart.md`
 
+### Versioning drill + KPI artifacts
+
+- Attach or archive **`kpi_*.json`** (and optional drill notes) as **GitHub Release assets** alongside the git tag, or commit pinned copies under `docs/ops-artifacts/<tag>/` when your org requires an in-repo paper trail.
+- Keep the weekly / bi-weekly / monthly cadence above in a team calendar or project board; copy **drill scenario outcomes** into the quarterly review doc (see [`docs/cycle-review-35m.md`](cycle-review-35m.md) template).
+
 ## Ownership loop
 
 - Runtime owner runs drills and uploads artifacts.

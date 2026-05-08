@@ -6,7 +6,7 @@
 
 Enable either or both providers with Cargo features (`openai`, `anthropic`; both default on). The stable API is the **crate root** `pub use` surface (no `flowgrid::openai` / `flowgrid::anthropic` modules).
 
-Replace placeholder `repository` / `homepage` URLs in [`crates/flowgrid/Cargo.toml`](crates/flowgrid/Cargo.toml) if they still point at `example/*` before publishing to [crates.io](https://crates.io).
+The workspace MSRV is **Rust 1.85+** (root [`Cargo.toml`](Cargo.toml)). The HTTP crate **`flowgrid` 0.2.0** adds public fields (`OpenAiClientConfig` / `ClientConfig`: **`http_client_builder_hook`**; **`ListPage`**: **`extra`**) — update struct literals or use builders; see [`CHANGELOG.md`](CHANGELOG.md), **[`docs/migration.md`](docs/migration.md)**.
 
 ## Preview limits (LLM stack)
 
@@ -48,7 +48,7 @@ cargo run -p flowgrid-serve   # OpenAI-shaped stub on :9000
 cargo run -p flowgrid-ui      # SQLite REST shell on :9010
 ```
 
-The HTTP SDK crate [`flowgrid`](crates/flowgrid/) is unchanged; point `OPENAI_BASE_URL` at `flowgrid-serve` for adapter testing.
+The stable HTTP SDK is [`flowgrid`](crates/flowgrid/) **0.2.x** (crate root `pub use` surface, semver-checked in CI). For local adapter testing, point `OPENAI_BASE_URL` at `flowgrid-serve`.
 
 ## Cookbook
 
@@ -327,6 +327,9 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 
 - **[`CHANGELOG.md`](CHANGELOG.md)** — release notes (Keep a Changelog).
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — semver baseline rules for API edits (`crates/flowgrid/semver/baseline_rustdoc.json`).
+- **[`docs/RELEASE-flowgrid.md`](docs/RELEASE-flowgrid.md)** — `cargo publish --dry-run` / tag checklist for the HTTP crate (optional; no automatic push).
+- **[`docs/advisory-supply-chain.md`](docs/advisory-supply-chain.md)** — quarterly review of `cargo deny` advisory ignores.
+- **[`docs/reviews/q3-2026.md`](docs/reviews/q3-2026.md)** — Q3 cycle review working notes (priorities + KPI inputs).
 - **[`docs/dev-handbook.md`](docs/dev-handbook.md)** — contributor workflow, commands, Windows linker notes, release checklist.
 - **[`docs/ml-operations-handbook.md`](docs/ml-operations-handbook.md)** — phased LLM/ML implementation guide and deployment profiles.
 - **[`docs/profile-pack.md`](docs/profile-pack.md)** — operations-ready profile pack for `local|hybrid|cloud`.

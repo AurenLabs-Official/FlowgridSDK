@@ -3,7 +3,7 @@
 
 [advisories]
 version = 2
-# Transitive only; tracked for removal when Burn / tokenizers move their trees.
+# Transitive only — see [docs/advisory-supply-chain.md](docs/advisory-supply-chain.md) for quarterly review.
 ignore = [
     # burn-core 0.13 + workspace pin `=2.0.0-rc.3`; no maintained bincode 2 line per advisory.
     { id = "RUSTSEC-2025-0141", reason = "Transitive bincode 2.0.0-rc.3 via burn-core; pinned for Burn 0.13 API." },

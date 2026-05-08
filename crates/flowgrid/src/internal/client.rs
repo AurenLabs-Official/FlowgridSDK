@@ -311,8 +311,9 @@ pub mod oai {
             self
         }
 
-        /// Customize the shared [`reqwest::Client`](reqwest::Client) after the SDK applies
-        /// [`ClientConfig::timeout`](ClientConfig::timeout) (custom connector, CA bundle, HTTP/2, …).
+        /// Customize the shared [`reqwest::Client`](reqwest::Client) after the SDK applies the
+        /// default per-request HTTP timeout from [`OpenAiClientConfig`](crate::OpenAiClientConfig)
+        /// (field `timeout`; custom connector, CA bundle, HTTP/2, …).
         pub fn http_client_builder_hook<F>(mut self, hook: F) -> Self
         where
             F: Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync + 'static,

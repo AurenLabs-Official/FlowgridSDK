@@ -24,7 +24,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 
 | Crate | Role |
 |-------|------|
-| `flowgrid` | **Stable** HTTP SDK (unchanged for LLM work) |
+| `flowgrid` | **Stable** HTTP SDK (**semver** at crate root `pub use`; current line **0.2.x**). Independent of preview LLM crates. |
 | `flowgrid-device` | `FLOWGRID_DEVICE` parsing (no Burn dependency) |
 | `flowgrid-tokenizer` | HF `tokenizer.json`; streaming decode with **incremental** `decode_streaming` |
 | `flowgrid-data` | mmap token blobs (`u32` LE) |
@@ -134,6 +134,11 @@ Baseline authority, CI parity, and comparison reporting:
 - `docs/kpi-baseline-authority.md`
 - `docs/release-gates-parity.md`
 - `docs/model-comparison-reporting.md`
+
+## Roadmap: dtypes and larger checkpoints
+
+- **Default path today:** F32-oriented loaders and docs (see `flowgrid-model` HF helpers).
+- **Next:** BF16 / F16 / quantized (`Q`) weight paths stay **tied to the Burn upgrade track** (see [advisory-supply-chain.md](../advisory-supply-chain.md) / supply-chain tracker): schedule a dedicated spike before promising wide dtype coverage in production profiles.
 
 ## Dependency pin
 

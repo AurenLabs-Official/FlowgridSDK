@@ -23,6 +23,11 @@ This policy anchors Phase D operational maturity: predictable upgrades and depre
 2. Keep deprecated behavior for at least one planned release cycle unless security-critical.
 3. Provide replacement commands/paths in [migration.md](migration.md).
 
+## Dependencies / supply chain
+
+- [`cargo deny check`](../deny.toml) (CI) may ignore **transitive** advisories; see [advisory-supply-chain.md](advisory-supply-chain.md) for the review table and quarterly cadence.
+- When dropping an `ignore` entry in `deny.toml`, re-run `cargo deny check` and `cargo audit` before merge.
+
 ## Upgrade checklist
 
 - [ ] `cargo test --workspace` (or scoped crates for preview areas)

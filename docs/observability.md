@@ -57,6 +57,17 @@ Operational SLOs used in roadmap reviews:
 - queue saturation proxy (overload/429 share on serve endpoints)
 - retry pressure (`flowgrid.retry_count > 0` share)
 
+## `flowgrid-serve` completion semantics (observability)
+
+When operating an OpenAI-shaped **`flowgrid-serve`** endpoint, distinguish how token counts are produced:
+
+| Mode | When | `usage.prompt_tokens` / `completion_tokens` | `finish_reason` |
+|------|------|-----------------------------------------------|-----------------|
+| **Tokenizer-exact** | Checkpoint + manifest tokenizer loaded (`FLOWGRID_SERVE_CHECKPOINT`, etc.) | Exact from runtime tokenizer | Grounded in decode (e.g. `stop` / `length`); EOS excluded from `completion_tokens` per README compat table |
+| **Byte-heuristic / echo** | No checkpoint tokenizer (prompt echo / stub path) | Approximate (e.g. ~bytes/4 heuristic); treat dashboards as **lower confidence** | May not match production tokenizer semantics |
+
+**Recommended logging / metrics:** record a bounded label or span field such as `flowgrid.serve.usage_mode = tokenizer | heuristic` so alerts and SLO dashboards do not mix the two populations. Baseline KPI smoke scripts: **`just kpi-serve-local`**, **`just kpi-serve-hybrid`**, **`just kpi-serve-cloud`** — compare outputs against bands in [loadtest-matrix.md](loadtest-matrix.md) and recovery targets in [runtime-resilience-program.md](runtime-resilience-program.md).
+
 ## Alerting thresholds (baseline bands)
 
 - p95 latency: alert when sustained > baseline profile band.

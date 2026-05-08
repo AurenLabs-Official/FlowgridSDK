@@ -5,32 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_(Nothing yet.)_
+
 ## [0.2.0] - 2026-05-07
 
-Preview-only **breaking** adjustments for the local LLM workspace crates; the **`flowgrid` HTTP SDK** also ships **0.2.0** with additive public fields (see `[Unreleased]` / release notes when published).
-
-### Added
-
-- `flowgrid-serve`: `CompletionMeta` / streaming `StreamPart` with tokenizer-backed **`usage`** and **`finish_reason`** when a checkpoint is loaded; **`FLOWGRID_SERVE_EOS_ID`** override; SSE **`data:`** error objects before stream end on inference failures.
-- `flowgrid-checkpoint`: `load_manifest` warns on legacy manifests (missing `manifest_version` or non-`b3:` fingerprints); optional **`lora_schema_version`** and manifest **`lora`** sidecar pointer when saving with LoRA (`save_nano_gpt_checkpoint` gains `lora_sidecar: Option<&str>`).
-- `flowgrid-device`: **`FLOWGRID_DEVICE`** parsing for preview binaries (CPU vs wgpu intent).
-- `flowgrid-cli` / `flowgrid-serve`: optional Cargo feature **`gpu-wgpu`** (Burn **`Wgpu`** backend); **`FLOWGRID_DEVICE`** selects adapter when enabled.
-- `flowgrid-model`: **`hf::llama::decode_self_attn_q_proj`** (F32/BF16/F16 bytes → rank-2 tensor) + Mistral re-export; unit test `llama_decode_weights`.
-
-### Changed
-
-- **`save_nano_gpt_checkpoint(..., tokenizer_path, lora_sidecar)`** — fourth parameter is now the LoRA sidecar relative path (e.g. `"lora.json"`), or `None`.
-
-### Documentation
-
-- README “OpenAI-shaped compat” table for `flowgrid-serve`; `docs/llm/overview.md` usage and manifest migration notes.
-
-## [Unreleased]
+The **`flowgrid` HTTP SDK** is **0.2.0** (additive fields on constructible configs / list types). **Workspace MSRV** is **Rust 1.85** (see root `Cargo.toml`). Preview LLM/ML crates ship breaking and additive changes listed below.
 
 ### Breaking (`flowgrid` HTTP crate)
 
-- **`flowgrid` 0.2.0** on crates.io surface: **`ClientConfig.http_client_builder_hook`** and **`ListPage.extra`** (update struct literals or use `..` / builders). Semver baseline **`crates/flowgrid/semver/baseline_rustdoc.json`** refreshed for CI.
-- **MSRV** for the workspace (and `flowgrid`) raised to **1.85** (current `reqwest` / `hyper-rustls` stack).
+- **`ClientConfig.http_client_builder_hook`** and **`ListPage.extra`** — update struct literals or use `..` / builders. The semver baseline **[`crates/flowgrid/semver/baseline_rustdoc.json`](crates/flowgrid/semver/baseline_rustdoc.json)** was refreshed for CI.
+- **MSRV** for the workspace (and `flowgrid`) is **1.85** (current `reqwest` / `hyper-rustls` stack).
 
 ### Breaking (preview crates)
 
@@ -41,6 +27,11 @@ Preview-only **breaking** adjustments for the local LLM workspace crates; the **
 
 ### Added
 
+- `flowgrid-serve`: `CompletionMeta` / streaming `StreamPart` with tokenizer-backed **`usage`** and **`finish_reason`** when a checkpoint is loaded; **`FLOWGRID_SERVE_EOS_ID`** override; SSE **`data:`** error objects before stream end on inference failures.
+- `flowgrid-checkpoint`: `load_manifest` warns on legacy manifests (missing `manifest_version` or non-`b3:` fingerprints); optional **`lora_schema_version`** and manifest **`lora`** sidecar pointer when saving with LoRA (`save_nano_gpt_checkpoint` gains `lora_sidecar: Option<&str>`).
+- `flowgrid-device`: **`FLOWGRID_DEVICE`** parsing for preview binaries (CPU vs wgpu intent).
+- `flowgrid-cli` / `flowgrid-serve`: optional Cargo feature **`gpu-wgpu`** (Burn **`Wgpu`** backend); **`FLOWGRID_DEVICE`** selects adapter when enabled.
+- `flowgrid-model`: **`hf::llama::decode_self_attn_q_proj`** (F32/BF16/F16 bytes → rank-2 tensor) + Mistral re-export; unit test `llama_decode_weights`.
 - `flowgrid-cli`: **`--n-kv-head`** on `train`, `generate`, `eval` (`0` = default to `--n-head`); **`--no-echo`** already streams **prompt + completion**.
 - `flowgrid-serve`: **`FLOWGRID_SERVE_BURST`** (token-bucket burst; defaults to `FLOWGRID_SERVE_RPS`); streamed inference errors **`event: error`** without **`[DONE]`**; **`api-key` / `x-api-key`** auth headers alongside Bearer.
 - `flowgrid-checkpoint`: streamed BLAKE3 over `model.bin` (bounded buffer read) → same digest, less RAM spikes.
@@ -76,6 +67,7 @@ Preview-only **breaking** adjustments for the local LLM workspace crates; the **
 
 ### Changed
 
+- **`save_nano_gpt_checkpoint(..., tokenizer_path, lora_sidecar)`** — fourth parameter is now the LoRA sidecar relative path (e.g. `"lora.json"`), or `None`.
 - **`CreateEmbeddingResponse.usage`**, **`Completion.usage`**, and **`ResponseObject.usage`** are now structured types (with **`extra`** maps) instead of raw **`serde_json::Value`**.
 - `flowgrid-cli train`: expanded loop controls via **`--epochs`** and **`--batch-size`** to improve train-from-scratch/fine-tune reproducibility.
 - CI: added **`ml-core-smoke`** job; local mirror command **`just check-ml-core`**.
@@ -92,10 +84,11 @@ Preview-only **breaking** adjustments for the local LLM workspace crates; the **
 - **README:** duplicate compatibility paragraph removed.
 - **`azure` module rustdoc:** link to [`docs/http.md`](docs/http.md) now points at the workspace-root file.
 - `flowgrid-ml`: **`multiclass_classification_metrics`** label bounds check no longer uses `num_classes as u8` (fixes incorrect failures when `num_classes == 256`).
-- Docs/CI/`just`: `prepare` smoke commands now pass **`--byte-level`** when no `--tokenizer` is set (matches CLI requirement).
+- Docs/CI/`just`: `prepare` smoke commands include **`--byte-level`** when no `--tokenizer` is set; CLI defaults to byte-level when **`--tokenizer`** is omitted.
 
 ### Documentation
 
+- README “OpenAI-shaped compat” table for `flowgrid-serve`; `docs/llm/overview.md` usage and manifest migration notes.
 - README: security and privacy, platform limits (WASM/edge), serde stance, cancellation patterns, benchmarks, commercial/compatibility placeholders.
 - Added operational docs: `docs/loadtest-matrix.md`, `docs/runbook-quickstart.md`, and `docs/profile-pack.md`; expanded handbook/overview links for baseline KPIs, golden paths, and ops-ready artifact flow.
 - Added roadmap governance docs: `docs/runtime-resilience-program.md`, `docs/workload-templates.md`, and `docs/ops-readiness-30m.md`.
@@ -107,5 +100,6 @@ Preview-only **breaking** adjustments for the local LLM workspace crates; the **
 
 Initial crates.io-aligned snapshot (replace date on first publish).
 
-[Unreleased]: https://github.com/pwitt/FlowgridSDK/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pwitt/FlowgridSDK/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pwitt/FlowgridSDK/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pwitt/FlowgridSDK/releases/tag/v0.1.0

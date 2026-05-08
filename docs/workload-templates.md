@@ -49,3 +49,8 @@ This catalog defines reusable baseline workloads for months 13-21.
 ## Adoption gate
 
 For new workloads, choose a template first and justify deviations in PR notes.
+
+## Usage tracking (Template-First)
+
+- **Monthly (operational KPI review):** record the **share of new workloads** that started from this catalog (template name / id) vs. ad-hoc commands; include **`flowgrid-ui`** job templates where applicable (see [`crates/flowgrid-ui/src/jobs.rs`](../crates/flowgrid-ui/src/jobs.rs) resolver).
+- **Quarterly:** drop unused templates and add missing ones called out in roadmap reviews ([cycle-review-35m.md](cycle-review-35m.md) / Q3 notes in [reviews/q3-2026.md](reviews/q3-2026.md)).

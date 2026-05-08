@@ -155,6 +155,8 @@ jobs:
       - name: Install cargo-semver-checks
         run: cargo +stable install cargo-semver-checks --locked
       - name: Generate current rustdoc JSON (full features, single TLS)
+        env:
+          RUSTDOCFLAGS: -Drustdoc::private_intra_doc_links -Drustdoc::broken_intra_doc_links
         run: cargo +nightly rustdoc -p flowgrid --features full -Z unstable-options -- -Z unstable-options --output-format json
       - name: Semver checks (committed baseline)
         run: cargo +stable semver-checks check-release -p flowgrid --baseline-rustdoc crates/flowgrid/semver/baseline_rustdoc.json --current-rustdoc target/doc/flowgrid.json

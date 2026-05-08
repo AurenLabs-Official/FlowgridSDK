@@ -2,6 +2,21 @@
 
 Local delivery commands should mirror CI so developers reproduce the same gates before merge.
 
+## Release candidates (parity)
+
+For a **release candidate** or **tagged preview**, the following local gates are **MUST**-pass (same commands as CI / [`justfile`](../justfile)):
+
+| Gate | Command(s) |
+|------|------------|
+| ML core | `just check-ml-core` |
+| Reproducibility | `just repro-ml-smoke` |
+| Templates | `just template-train-lora-smoke` and `just template-eval-val-gate` |
+| Golden LLM path | `just golden-llm-path` |
+| Classical ML report | `just golden-classical-ml-path` |
+| Artifact validation | `python tools/validate_release_gates.py` |
+
+The aggregated loop is **`just ops-release-pack`** (includes gate validation; KPI JSON files require a running `flowgrid-serve` for profile smoke scripts).
+
 ## CI jobs (ML / gates)
 
 | CI job | Local equivalent |

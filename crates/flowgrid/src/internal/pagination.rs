@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Hard caps for [`AssistantsClient::list_all_typed`](crate::internal::resources::assistants::AssistantsClient::list_all_typed)
+/// Hard caps for [`AssistantsClient::list_all_typed`](crate::AssistantsClient::list_all_typed)
 /// and similar **cursor walks** over [`ListPage`].
 ///
 /// **`max_pages`** bounds how many HTTP list calls are made (each page is one request).
