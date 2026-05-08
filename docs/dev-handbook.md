@@ -152,9 +152,11 @@ Operational loops:
 ```bash
 just golden-llm-path
 just golden-classical-ml-path
+just golden-multiclass-ml-path
 just template-train-lora-smoke
 just template-eval-val-gate
 just repro-ml-smoke
+just compare-train-repro-delta
 just validate-release-gates
 just ops-release-pack
 ```
@@ -175,7 +177,7 @@ Useful env vars for `flowgrid-serve`:
 
 See `docs/llm/overview.md` for full details and current preview constraints.
 Runbook entrypoint for incidents and profile bring-up: `docs/runbook-quickstart.md`.
-30-month governance references: `docs/runtime-resilience-program.md`, `docs/workload-templates.md`, `docs/ops-readiness-30m.md`.
+Roadmap governance references: `docs/kpi-baseline-authority.md`, `docs/release-gates-parity.md`, `docs/runtime-resilience-program.md`, `docs/workload-templates.md`, `docs/lifecycle-policy.md`, `docs/cycle-review-35m.md`, `docs/ops-readiness-30m.md`.
 
 ## 11) Release hygiene checklist
 

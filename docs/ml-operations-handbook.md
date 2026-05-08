@@ -111,6 +111,14 @@ just kpi-serve-cloud
 
 Each run produces a `serve_kpi_smoke_v1` JSON artifact under `target/mlops/`.
 
+Canonical baseline binding for profiles:
+
+- `docs/kpi-baseline-authority.md`
+
+CI/local parity for gate jobs:
+
+- `docs/release-gates-parity.md`
+
 ## Golden paths (release candidates)
 
 ### 1) LLM path
@@ -158,6 +166,16 @@ Workload template portfolio:
 Long-horizon ops readiness and deprecation lifecycle:
 
 - `docs/ops-readiness-30m.md`
+- `docs/lifecycle-policy.md`
+- `docs/cycle-review-35m.md`
+
+Incident review checklist:
+
+- `docs/incident-review-checklist.md`
+
+Model comparison (train/eval deltas):
+
+- `docs/model-comparison-reporting.md`
 
 ## Phase delivery baseline (12 weeks)
 

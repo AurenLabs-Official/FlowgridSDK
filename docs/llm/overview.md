@@ -129,6 +129,12 @@ Workload template catalog and resilience governance:
 - `docs/workload-templates.md`
 - `docs/runtime-resilience-program.md`
 
+Baseline authority, CI parity, and comparison reporting:
+
+- `docs/kpi-baseline-authority.md`
+- `docs/release-gates-parity.md`
+- `docs/model-comparison-reporting.md`
+
 ## Dependency pin
 
 `burn-core 0.13` expects **`bincode 2.0.0-rc.3`**; the workspace pins `bincode` via `flowgrid-tensor`.

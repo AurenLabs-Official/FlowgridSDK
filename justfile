@@ -51,6 +51,13 @@ golden-llm-path:
 golden-classical-ml-path:
     cargo run -p flowgrid-ml --example golden_classical_ml -- --out target/mlops/golden_classical_ml.json
 
+golden-multiclass-ml-path:
+    cargo run -p flowgrid-ml --example multiclass_golden_ml -- --out target/mlops/multiclass_classical_ml.json
+
+# After `just repro-ml-smoke`, delta between paired train runs should be ~0 on CE fields.
+compare-train-repro-delta:
+    python tools/compare_run_reports.py --kind train --a target/mlops/repro_a.json --b target/mlops/repro_b.json
+
 # UI-oriented workload template smokes.
 template-train-lora-smoke:
     cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin

@@ -15,6 +15,8 @@ pub enum MlError {
     MismatchedLen { x_len: usize, y_len: usize },
     #[error("input variance is zero")]
     ZeroVariance,
+    #[error("label out of range: label={label}, num_classes={num_classes}")]
+    InvalidLabel { label: u8, num_classes: usize },
 }
 
 pub type MlResult<T> = Result<T, MlError>;
@@ -156,6 +158,112 @@ pub fn binary_classification_metrics(y_true: &[u8], y_pred: &[u8]) -> MlResult<C
     })
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct MulticlassMetrics {
+    pub accuracy: f64,
+    pub macro_precision: f64,
+    pub macro_recall: f64,
+    pub macro_f1: f64,
+}
+
+/// Macro-averaged precision/recall/F1 over classes with **support** in `y_true`.
+///
+/// Labels must be in `0..num_classes`.
+pub fn multiclass_classification_metrics(
+    y_true: &[u8],
+    y_pred: &[u8],
+    num_classes: usize,
+) -> MlResult<MulticlassMetrics> {
+    if y_true.is_empty() || y_pred.is_empty() {
+        return Err(MlError::Empty);
+    }
+    if y_true.len() != y_pred.len() {
+        return Err(MlError::MismatchedLen {
+            x_len: y_true.len(),
+            y_len: y_pred.len(),
+        });
+    }
+    if num_classes == 0 || num_classes > 256 {
+        return Err(MlError::Empty);
+    }
+    // `num_classes as u8` would wrap at 256; validate with usize against label bytes.
+    for (&t, &p) in y_true.iter().zip(y_pred.iter()) {
+        if (t as usize) >= num_classes {
+            return Err(MlError::InvalidLabel {
+                label: t,
+                num_classes,
+            });
+        }
+        if (p as usize) >= num_classes {
+            return Err(MlError::InvalidLabel {
+                label: p,
+                num_classes,
+            });
+        }
+    }
+
+    let n = y_true.len() as f64;
+    let mut correct = 0.0_f64;
+    for (&t, &p) in y_true.iter().zip(y_pred.iter()) {
+        if t == p {
+            correct += 1.0;
+        }
+    }
+    let accuracy = correct / n.max(1.0);
+
+    let mut prec_sum = 0.0_f64;
+    let mut recall_sum = 0.0_f64;
+    let mut f1_sum = 0.0_f64;
+    let mut counted = 0usize;
+
+    for c in 0..num_classes {
+        let cc = c as u8;
+        let support = y_true.iter().filter(|&&y| y == cc).count();
+        if support == 0 {
+            continue;
+        }
+        let mut tp = 0.0_f64;
+        let mut fp = 0.0_f64;
+        let mut fn_ = 0.0_f64;
+        for (&t, &p) in y_true.iter().zip(y_pred.iter()) {
+            if t == cc && p == cc {
+                tp += 1.0;
+            } else if t != cc && p == cc {
+                fp += 1.0;
+            } else if t == cc && p != cc {
+                fn_ += 1.0;
+            }
+        }
+        let precision = if tp + fp <= f64::EPSILON {
+            0.0
+        } else {
+            tp / (tp + fp)
+        };
+        let recall = if tp + fn_ <= f64::EPSILON {
+            0.0
+        } else {
+            tp / (tp + fn_)
+        };
+        let f1 = if precision + recall <= f64::EPSILON {
+            0.0
+        } else {
+            2.0 * precision * recall / (precision + recall)
+        };
+        prec_sum += precision;
+        recall_sum += recall;
+        f1_sum += f1;
+        counted += 1;
+    }
+
+    let denom = counted.max(1) as f64;
+    Ok(MulticlassMetrics {
+        accuracy,
+        macro_precision: prec_sum / denom,
+        macro_recall: recall_sum / denom,
+        macro_f1: f1_sum / denom,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +288,22 @@ mod tests {
         let m = binary_classification_metrics(&y_true, &y_pred).unwrap();
         assert!((m.accuracy - 0.8).abs() < 1e-9);
         assert!(m.f1 > 0.79 && m.f1 < 0.81);
+    }
+
+    #[test]
+    fn multiclass_metrics_three_classes() {
+        let y_true = [0u8, 1, 2, 0, 1, 2];
+        let y_pred = [0u8, 1, 2, 0, 0, 2];
+        let m = multiclass_classification_metrics(&y_true, &y_pred, 3).unwrap();
+        assert!((m.accuracy - (5.0 / 6.0)).abs() < 1e-9);
+        assert!(m.macro_f1 > 0.0 && m.macro_f1 <= 1.0);
+    }
+
+    #[test]
+    fn multiclass_metrics_num_classes_256_does_not_wrap() {
+        let y_true = [0u8, 255, 254];
+        let y_pred = [0u8, 255, 253];
+        let m = multiclass_classification_metrics(&y_true, &y_pred, 256).unwrap();
+        assert!((m.accuracy - (2.0 / 3.0)).abs() < 1e-9);
     }
 }

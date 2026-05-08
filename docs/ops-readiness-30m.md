@@ -1,6 +1,6 @@
 # Ops Readiness (30-Month Track)
 
-This document defines long-horizon operations readiness for FlowgridSDK.
+This document defines long-horizon operations readiness for FlowgridSDK. For the **35-month** horizon close-out, use [cycle-review-35m.md](cycle-review-35m.md) together with this policy set.
 
 ## Lifecycle policy
 
@@ -26,9 +26,9 @@ This document defines long-horizon operations readiness for FlowgridSDK.
 - Quarterly: roadmap scope and release predictability review.
 - Semiannual: architecture and dependency risk review.
 
-## 30-month review package
+## End-of-cycle review package
 
-At end-of-cycle, publish:
+At end-of-cycle (30–35 month window), publish:
 
 - KPI trend summary (runtime + ML + delivery)
 - Change-log based release narrative
@@ -41,4 +41,6 @@ At end-of-cycle, publish:
 - `docs/profile-pack.md`
 - `docs/runbook-quickstart.md`
 - `docs/migration.md`
+- `docs/lifecycle-policy.md`
+- `docs/cycle-review-35m.md`
 - `CHANGELOG.md`

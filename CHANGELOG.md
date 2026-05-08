@@ -86,12 +86,16 @@ Preview-only **breaking** adjustments for the local LLM workspace crates (the st
 - **`Retry-After` HTTP-date** values in the past (or equal to “now”) are ignored so retries use exponential backoff instead of a **zero** delay.
 - **README:** duplicate compatibility paragraph removed.
 - **`azure` module rustdoc:** link to [`docs/http.md`](docs/http.md) now points at the workspace-root file.
+- `flowgrid-ml`: **`multiclass_classification_metrics`** label bounds check no longer uses `num_classes as u8` (fixes incorrect failures when `num_classes == 256`).
 
 ### Documentation
 
 - README: security and privacy, platform limits (WASM/edge), serde stance, cancellation patterns, benchmarks, commercial/compatibility placeholders.
 - Added operational docs: `docs/loadtest-matrix.md`, `docs/runbook-quickstart.md`, and `docs/profile-pack.md`; expanded handbook/overview links for baseline KPIs, golden paths, and ops-ready artifact flow.
 - Added roadmap governance docs: `docs/runtime-resilience-program.md`, `docs/workload-templates.md`, and `docs/ops-readiness-30m.md`.
+- 35-month roadmap implementation docs: `docs/kpi-baseline-authority.md`, `docs/release-gates-parity.md`, `docs/lifecycle-policy.md`, `docs/cycle-review-35m.md`, `docs/model-comparison-reporting.md`, `docs/incident-review-checklist.md`.
+- `flowgrid-ml`: multiclass macro-F1 metrics (`multiclass_classification_metrics`) and example `multiclass_golden_ml`.
+- Tooling: `tools/compare_run_reports.py` for train/eval JSON deltas; `just compare-train-repro-delta`, `just golden-multiclass-ml-path`.
 
 ## [0.1.0] - YYYY-MM-DD
 

@@ -40,6 +40,12 @@ This catalog defines reusable baseline workloads for months 13-21.
 - CLI shape: `flowgrid-ml --example golden_classical_ml -- --out ...`
 - Artifact: `target/mlops/golden_classical_ml.json`
 
+### 6) Multiclass classification baseline
+
+- Intent: additional classical ML task type (macro-F1 over supported classes).
+- CLI shape: `flowgrid-ml --example multiclass_golden_ml -- --out ...`
+- Artifact: `target/mlops/multiclass_classical_ml.json`
+
 ## Adoption gate
 
 For new workloads, choose a template first and justify deviations in PR notes.

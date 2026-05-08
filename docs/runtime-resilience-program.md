@@ -33,6 +33,16 @@ This program operationalizes runtime hardening for months 7-12 and keeps the sam
    - Trigger overload, then reduce pressure.
    - Verify service recovers without restart and error-rate returns to baseline band.
 
+## Recovery KPI targets (initial)
+
+Targets refine each quarter; tie-break using frozen baseline JSON from [kpi-baseline-authority.md](kpi-baseline-authority.md).
+
+| Signal | Target |
+|--------|--------|
+| Post-drill `error_rate` | Within the profile gate band in [loadtest-matrix.md](loadtest-matrix.md) |
+| Time to recover stable p95 | Trend down quarter-over-quarter vs Phase A baseline |
+| Repeated overload oscillation | None sustained across two drill cycles |
+
 ## Release gate evidence
 
 Each release candidate must include:

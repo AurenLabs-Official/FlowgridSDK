@@ -335,6 +335,12 @@ CI runs **`cargo deny check`** and **`cargo audit`** on Linux; configure your or
 - **[`docs/runtime-resilience-program.md`](docs/runtime-resilience-program.md)** — fairness/overload/degraded-mode drills and cadence.
 - **[`docs/workload-templates.md`](docs/workload-templates.md)** — reusable LLM/ML workload template catalog.
 - **[`docs/ops-readiness-30m.md`](docs/ops-readiness-30m.md)** — long-horizon compatibility/deprecation/maintenance policy.
+- **[`docs/kpi-baseline-authority.md`](docs/kpi-baseline-authority.md)** — canonical KPI/SLO baseline binding per deployment profile.
+- **[`docs/release-gates-parity.md`](docs/release-gates-parity.md)** — CI vs local gate parity matrix.
+- **[`docs/lifecycle-policy.md`](docs/lifecycle-policy.md)** — API/runtime/dependency lifecycle rules.
+- **[`docs/cycle-review-35m.md`](docs/cycle-review-35m.md)** — end-of-horizon cycle review template.
+- **[`docs/model-comparison-reporting.md`](docs/model-comparison-reporting.md)** — comparing train/eval JSON artifacts.
+- **[`docs/incident-review-checklist.md`](docs/incident-review-checklist.md)** — post-incident and drill review checklist.
 - **[`docs/migration.md`](docs/migration.md)** — onboarding from official SDKs or raw `reqwest`.
 - **[`docs/resilience.md`](docs/resilience.md)** — retries, custom status predicate, rate limits vs circuit breakers.
 - **[`docs/http.md`](docs/http.md)** — TLS, proxy env, timeouts, OpenAI-compatible bases.
@@ -348,7 +354,7 @@ See **[`docs/migration.md`](docs/migration.md)** for configuration, errors, stre
 
 ## Developer workflow (`just`)
 
-Optional [**`just`**](https://github.com/casey/just) recipes mirror CI and ops loops: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just check-ml-core`, `just golden-llm-path`, `just golden-classical-ml-path`, `just template-train-lora-smoke`, `just template-eval-val-gate`, `just repro-ml-smoke`, `just validate-release-gates`, `just ops-release-pack`, `just deny`, `just audit`.
+Optional [**`just`**](https://github.com/casey/just) recipes mirror CI and ops loops: `just fmt`, `just clippy`, `just test-full`, `just check-msrv`, `just semver-local`, `just test-contracts`, `just check-ml-core`, `just golden-llm-path`, `just golden-classical-ml-path`, `just golden-multiclass-ml-path`, `just template-train-lora-smoke`, `just template-eval-val-gate`, `just repro-ml-smoke`, `just compare-train-repro-delta`, `just validate-release-gates`, `just ops-release-pack`, `just deny`, `just audit`.
 
 ## License
 
