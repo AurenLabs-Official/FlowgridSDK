@@ -66,7 +66,13 @@ When operating an OpenAI-shaped **`flowgrid-serve`** endpoint, distinguish how t
 | **Tokenizer-exact** | Checkpoint + manifest tokenizer loaded (`FLOWGRID_SERVE_CHECKPOINT`, etc.) | Exact from runtime tokenizer | Grounded in decode (e.g. `stop` / `length`); EOS excluded from `completion_tokens` per README compat table |
 | **Byte-heuristic / echo** | No checkpoint tokenizer (prompt echo / stub path) | Approximate (e.g. ~bytes/4 heuristic); treat dashboards as **lower confidence** | May not match production tokenizer semantics |
 
-**Recommended logging / metrics:** record a bounded label or span field such as `flowgrid.serve.usage_mode = tokenizer | heuristic` so alerts and SLO dashboards do not mix the two populations. Baseline KPI smoke scripts: **`just kpi-serve-local`**, **`just kpi-serve-hybrid`**, **`just kpi-serve-cloud`** — compare outputs against bands in [loadtest-matrix.md](loadtest-matrix.md) and recovery targets in [runtime-resilience-program.md](runtime-resilience-program.md).
+**Required logging / metrics for KPI runs:**
+
+- `flowgrid.serve.usage_mode = tokenizer | heuristic`
+- 429 / overload share (`server_overloaded` response ratio)
+- retry pressure (`flowgrid.retry_count > 0` share)
+
+Baseline KPI smoke scripts: **`just kpi-serve-local`**, **`just kpi-serve-hybrid`**, **`just kpi-serve-cloud`** and burst companions (`*-burst`) — compare outputs against bands in [loadtest-matrix.md](loadtest-matrix.md) and recovery targets in [runtime-resilience-program.md](runtime-resilience-program.md).
 
 ## Alerting thresholds (baseline bands)
 
@@ -81,3 +87,11 @@ Treat these as initial bands; tighten quarterly from real workload data.
 - Monthly: operational KPI review.
 - Quarterly: roadmap/capacity review.
 - Semiannual: architecture + dependency risk review.
+
+## Regression triage decision rule
+
+When a KPI regression is detected:
+
+1. If p95 rises while 429/overload share is flat, prioritize code-path or runtime profiling.
+2. If 429/overload spikes while latency remains stable, prioritize config tuning (`RPS`/`BURST`/queue/workers).
+3. If retry pressure spikes, investigate upstream dependency/rate-limit behavior before local tuning.

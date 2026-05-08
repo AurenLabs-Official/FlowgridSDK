@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -35,6 +37,13 @@ def main():
     ap.add_argument("--min-classical-r2", type=float, default=0.95)
     ap.add_argument("--min-classical-f1", type=float, default=0.75)
     ap.add_argument("--max-kpi-error-rate", type=float, default=0.10)
+    ap.add_argument("--kpi-regression-check", action="store_true")
+    ap.add_argument("--kpi-current-dir", default="target/mlops")
+    ap.add_argument("--kpi-baseline-dir", default="docs/ops-artifacts/baselines/latest")
+    ap.add_argument("--kpi-latency-regression-pct", type=float, default=25.0)
+    ap.add_argument("--kpi-throughput-regression-pct", type=float, default=20.0)
+    ap.add_argument("--kpi-strict-baseline", action="store_true")
+    ap.add_argument("--kpi-require-burst", action="store_true")
     args = ap.parse_args()
 
     train = load_json(args.train)
@@ -59,6 +68,27 @@ def main():
             continue
         report = load_json(path)
         assert_le(f"{path.name}.error_rate", float(report.get("error_rate", 1.0)), args.max_kpi_error_rate)
+
+    should_run_kpi_regression = args.kpi_regression_check or args.require_kpi
+    if should_run_kpi_regression:
+        cmd = [
+            sys.executable,
+            "tools/check_kpi_regression.py",
+            "--current-dir",
+            args.kpi_current_dir,
+            "--baseline-dir",
+            args.kpi_baseline_dir,
+            "--latency-regression-pct",
+            str(args.kpi_latency_regression_pct),
+            "--throughput-regression-pct",
+            str(args.kpi_throughput_regression_pct),
+            "--require-current",
+        ]
+        if args.kpi_strict_baseline:
+            cmd.append("--strict-baseline")
+        if args.kpi_require_burst:
+            cmd.append("--require-burst")
+        subprocess.run(cmd, check=True)
 
     print(
         json.dumps(

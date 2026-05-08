@@ -1,0 +1,17 @@
+{
+  "kind": "serve_kpi_smoke_v1",
+  "base_url": "http://127.0.0.1:9000",
+  "requests_total": 96,
+  "requests_ok": 96,
+  "requests_error": 0,
+  "error_rate": 0.0,
+  "latency_ms_p50": 15.491949976421893,
+  "latency_ms_p95": 16.739699931349605,
+  "latency_ms_mean": 14.836023949707547,
+  "prompt_tokens_total": 384,
+  "completion_tokens_total": 480,
+  "tokens_total": 864,
+  "tokens_per_sec": 602.9789251996257,
+  "elapsed_s": 1.4328859001398087,
+  "errors": []
+}

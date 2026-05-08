@@ -24,7 +24,7 @@ This program operationalizes runtime hardening for months 7-12 and keeps the sam
 ## Required drill scenarios
 
 1. **Queue saturation drill**
-   - Constrain queue/worker (`FLOWGRID_SERVE_QUEUE=1`, `FLOWGRID_SERVE_WORKERS=1`).
+   - Constrain queue/worker (`FLOWGRID_SERVE_QUEUE_DEPTH=1`, `FLOWGRID_SERVE_WORKERS=1`; legacy alias: `FLOWGRID_SERVE_QUEUE`).
    - Verify overload maps to OpenAI-style `429` code `server_overloaded`.
 2. **Timeout drill**
    - Lower `FLOWGRID_SERVE_REQUEST_TIMEOUT_MS`.
@@ -50,7 +50,11 @@ Each release candidate must include:
 - `target/mlops/kpi_local.json`
 - `target/mlops/kpi_hybrid.json`
 - `target/mlops/kpi_cloud.json`
+- `target/mlops/kpi_local_burst.json`
+- `target/mlops/kpi_hybrid_burst.json`
+- `target/mlops/kpi_cloud_burst.json`
 - Drill notes linked from `docs/runbook-quickstart.md`
+- KPI regression result from `tools/check_kpi_regression.py` (pass or owner-signed waiver)
 
 ### Versioning drill + KPI artifacts
 
@@ -62,3 +66,4 @@ Each release candidate must include:
 - Runtime owner runs drills and uploads artifacts.
 - Reviewer signs off gates in PR.
 - Release captain checks artifacts before tag/cut.
+- Monthly review records whether regressions require config tuning or code changes (see observability decision rule).

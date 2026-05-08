@@ -44,3 +44,5 @@ Each run must output:
 ```bash
 python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 64 --max-tokens 64 --out target/mlops/kpi_<profile>.json
 ```
+
+Use `_burst` output names for burst rows (for example `kpi_local_burst.json`) so automated regression checks can map matrix rows unambiguously.

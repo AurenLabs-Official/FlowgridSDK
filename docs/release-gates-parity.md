@@ -14,6 +14,7 @@ For a **release candidate** or **tagged preview**, the following local gates are
 | Golden LLM path | `just golden-llm-path` |
 | Classical ML report | `just golden-classical-ml-path` |
 | Artifact validation | `python tools/validate_release_gates.py` |
+| KPI regression | `just kpi-regression-check` |
 
 The aggregated loop is **`just ops-release-pack`** (includes gate validation; KPI JSON files require a running `flowgrid-serve` for profile smoke scripts).
 
@@ -30,10 +31,9 @@ The aggregated loop is **`just ops-release-pack`** (includes gate validation; KP
 
 Run `just ops-release-pack` for the aggregated artifact loop (includes gate validation; KPI JSON files require a running `flowgrid-serve` for profile smoke).
 
-## Optional strict KPI validation
+## Strict KPI validation (release candidates)
 
 ```bash
-python tools/validate_release_gates.py --require-kpi
+python tools/validate_release_gates.py --require-kpi --kpi-regression-check --kpi-require-burst
 ```
-
-Fails if `target/mlops/kpi_*.json` are missing.
+Fails if required `target/mlops/kpi_*.json` / `target/mlops/kpi_*_burst.json` are missing or if regression/gate checks fail.

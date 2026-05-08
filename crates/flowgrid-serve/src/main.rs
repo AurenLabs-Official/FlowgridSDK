@@ -45,10 +45,10 @@ async fn main() {
     }
     let auth_cfg = AuthConfig::from_env();
     let profile = DeploymentProfile::from_env();
-    let (default_rps, default_workers, default_queue_depth) = match profile {
-        DeploymentProfile::Local => (32_u64, 1_usize, 64_usize),
-        DeploymentProfile::Cloud => (256_u64, 4_usize, 512_usize),
-        DeploymentProfile::Hybrid => (96_u64, 2_usize, 256_usize),
+    let (default_rps, default_burst, default_workers, default_queue_depth) = match profile {
+        DeploymentProfile::Local => (96_u64, 128_u64, 1_usize, 64_usize),
+        DeploymentProfile::Cloud => (320_u64, 512_u64, 4_usize, 512_usize),
+        DeploymentProfile::Hybrid => (160_u64, 224_u64, 2_usize, 256_usize),
     };
     let max_body = std::env::var("FLOWGRID_SERVE_MAX_BODY_BYTES")
         .ok()
@@ -61,7 +61,7 @@ async fn main() {
     let burst = std::env::var("FLOWGRID_SERVE_BURST")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(rps.max(1));
+        .unwrap_or(default_burst);
     let rate_state = flowgrid_serve::ratelimit::RateLimitState::with_capacity(rps, burst.max(1));
     let llm = match flowgrid_serve::engine::LocalLlm::from_env() {
         Ok(o) => o,
@@ -75,6 +75,11 @@ async fn main() {
             queue_depth: std::env::var("FLOWGRID_SERVE_QUEUE_DEPTH")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
+                .or_else(|| {
+                    std::env::var("FLOWGRID_SERVE_QUEUE")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                })
                 .unwrap_or(default_queue_depth),
             worker_threads: std::env::var("FLOWGRID_SERVE_WORKERS")
                 .ok()

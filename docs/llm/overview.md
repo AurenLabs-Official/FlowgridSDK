@@ -43,7 +43,7 @@ The **`flowgrid` HTTP SDK** crate is **stable** by policy; everything under `flo
 ```bash
 cargo build -p flowgrid-cli
 cargo run -p flowgrid-cli -- prepare -i README.md -o target/readme.bin --byte-level
-cargo run -p flowgrid-cli --profile local -- train --tokens target/readme.bin --steps 32 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train.json
+cargo run -p flowgrid-cli -- --profile local train --tokens target/readme.bin --steps 32 --n-head 4 --n-kv-head 0 --run-report-out target/mlops/train.json
 cargo run -p flowgrid-cli -- generate --prompt "Hi" --max-new 16   # echoes prompt prefix; `--no-echo` for completion-only
 ```
 

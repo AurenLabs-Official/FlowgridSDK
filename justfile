@@ -44,8 +44,8 @@ check-ml-core:
 # LLM golden path with reproducible train/eval reports.
 golden-llm-path:
     cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/golden_readme.bin --byte-level
-    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/golden_readme.bin --steps 8 --epochs 2 --batch-size 2 --learn --seed 7 --run-report-out target/mlops/golden_llm_train.json
-    cargo run -p flowgrid-cli --profile local -- eval --dataset target/mlops/golden_readme.bin --split test --train-frac 0.8 --val-frac 0.1 --baseline-ppl 100.0 --max-regression-pct 100.0 --run-report-out target/mlops/golden_llm_eval.json
+    cargo run -p flowgrid-cli -- --profile local train --tokens target/mlops/golden_readme.bin --steps 8 --epochs 2 --batch-size 2 --learn --seed 7 --run-report-out target/mlops/golden_llm_train.json
+    cargo run -p flowgrid-cli -- --profile local eval --dataset target/mlops/golden_readme.bin --split test --train-frac 0.8 --val-frac 0.1 --baseline-ppl 100.0 --max-regression-pct 100.0 --run-report-out target/mlops/golden_llm_eval.json
 
 # Classical ML golden path report.
 golden-classical-ml-path:
@@ -70,19 +70,31 @@ template-eval-val-gate:
 # Quick reproducibility gate (same seed => same quality band).
 repro-ml-smoke:
     cargo run -p flowgrid-cli -- prepare -i README.md -o target/mlops/repro_readme.bin --byte-level
-    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_a.json
-    cargo run -p flowgrid-cli --profile local -- train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
+    cargo run -p flowgrid-cli -- --profile local train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_a.json
+    cargo run -p flowgrid-cli -- --profile local train --tokens target/mlops/repro_readme.bin --steps 6 --epochs 1 --batch-size 2 --learn --seed 11 --run-report-out target/mlops/repro_b.json
     python tools/check_train_repro.py --a target/mlops/repro_a.json --b target/mlops/repro_b.json --max-delta 1e-6
 
 # Serve KPI smoke for baseline capture (run while `flowgrid-serve` is up).
 kpi-serve-local:
     python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 32 --max-tokens 32 --out target/mlops/kpi_local.json
 
+kpi-serve-local-burst:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 96 --max-tokens 64 --out target/mlops/kpi_local_burst.json
+
 kpi-serve-hybrid:
     python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 64 --max-tokens 64 --out target/mlops/kpi_hybrid.json
 
+kpi-serve-hybrid-burst:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 128 --max-tokens 64 --out target/mlops/kpi_hybrid_burst.json
+
 kpi-serve-cloud:
     python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 128 --max-tokens 64 --out target/mlops/kpi_cloud.json
+
+kpi-serve-cloud-burst:
+    python tools/serve_kpi_smoke.py --base-url http://127.0.0.1:9000 --requests 256 --max-tokens 128 --out target/mlops/kpi_cloud_burst.json
+
+kpi-regression-check:
+    python tools/check_kpi_regression.py --current-dir target/mlops --baseline-dir docs/ops-artifacts/baselines/latest --require-current --require-burst
 
 # Validate release gates from generated artifacts.
 validate-release-gates:
